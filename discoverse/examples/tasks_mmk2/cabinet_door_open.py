@@ -12,22 +12,16 @@ from discoverse.envs.mmk2_base import MMK2Cfg
 from discoverse.task_base import MMK2TaskBase, recoder_mmk2
 from discoverse.utils import get_site_tmat, get_body_tmat, step_func, SimpleStateMachine
 
-class MMK2TASK(MMK2TaskBase):
+class SimNode(MMK2TaskBase):
 
     def domain_randomization(self):
-        # 随机 抽屉位置
+        # 随机 柜门位置
         self.mj_data.qpos[self.njq+0] += 2.*(np.random.random()-0.5) * 0.05
-        self.mj_data.qpos[self.njq+1] += 2.*(np.random.random()-0.5) * 0.025
-
-        # 随机 苹果位置
-        # wood_y_bios = (np.random.random()-0.75) * 0.05
-        # self.mj_data.qpos[self.njq+7+0] += 2.*(np.random.random()-0.5) * 0.05
-        # self.mj_data.qpos[self.njq+7+1] += wood_y_bios
-        # self.mj_data.qpos[self.njq+7+2] += 0.01
+        self.origin_pos=self.mj_data.qpos.copy()
 
     def check_success(self):
-        # :TODO:
-        return True
+        diff=np.sum(np.square(self.mj_data.qpos-self.origin_pos))
+        return diff > 20.0
 
 cfg = MMK2Cfg()
 cfg.use_gaussian_renderer = False
@@ -60,16 +54,16 @@ if __name__ == "__main__":
     parser.add_argument("--auto", action="store_true", help="auto run")
     args = parser.parse_args()
 
-    data_idx, data_set_size = args.data_idx, args.data_set_size
+    data_idx, data_set_size = args.data_idx, args.data_idx + args.data_set_size
     if args.auto:
         cfg.headless = True
         cfg.sync = False
 
     save_dir = os.path.join(DISCOVERSE_ROOT_DIR, "data/mmk2_cabinet_door_open")
     if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
+        os.makedirs(save_dir)
 
-    sim_node = MMK2TASK(cfg)
+    sim_node = SimNode(cfg)
     sim_node.teleop = None
     if hasattr(cfg, "save_mjb_and_task_config") and cfg.save_mjb_and_task_config and data_idx == 0:
         mujoco.mj_saveModel(sim_node.mj_model, os.path.join(save_dir, os.path.basename(cfg.mjcf_file_path).replace(".xml", ".mjb")))

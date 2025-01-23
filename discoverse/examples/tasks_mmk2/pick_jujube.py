@@ -12,7 +12,7 @@ from discoverse.envs.mmk2_base import MMK2Cfg
 from discoverse.task_base import MMK2TaskBase, recoder_mmk2
 from discoverse.utils import get_body_tmat, step_func, SimpleStateMachine
 
-class MMK2TASK(MMK2TaskBase):
+class SimNode(MMK2TaskBase):
 
     def domain_randomization(self):
         # 随机 木盘位置
@@ -65,12 +65,12 @@ cfg.obj_list    = ["bowl_yellow", "wood", "jujube"]
 cfg.sync     = False
 cfg.headless = False
 cfg.render_set  = {
-    "fps"    : 30,
+    "fps"    : 25,
     "width"  : 640,
     "height" : 480
 }
-cfg.obs_rgb_cam_id = None
-cfg.save_mjb_and_task_config = False
+cfg.obs_rgb_cam_id = [0,1,2]
+cfg.save_mjb_and_task_config = True
 
 if __name__ == "__main__":
     np.set_printoptions(precision=3, suppress=True, linewidth=500)
@@ -81,16 +81,16 @@ if __name__ == "__main__":
     parser.add_argument("--auto", action="store_true", help="auto run")
     args = parser.parse_args()
 
-    data_idx, data_set_size = args.data_idx, args.data_set_size
+    data_idx, data_set_size = args.data_idx, args.data_idx + args.data_set_size
     if args.auto:
         cfg.headless = True
         cfg.sync = False
 
     save_dir = os.path.join(DISCOVERSE_ROOT_DIR, "data/mmk2_pick_jujube")
     if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
+        os.makedirs(save_dir)
 
-    sim_node = MMK2TASK(cfg)
+    sim_node = SimNode(cfg)
     sim_node.teleop = None
     if hasattr(cfg, "save_mjb_and_task_config") and cfg.save_mjb_and_task_config:
         mujoco.mj_saveModel(sim_node.mj_model, os.path.join(save_dir, os.path.basename(cfg.mjcf_file_path).replace(".xml", ".mjb")))
@@ -98,7 +98,7 @@ if __name__ == "__main__":
 
     stm = SimpleStateMachine()
     stm.max_state_cnt = 19
-    max_time = 20.0 #s
+    max_time = 30.0 #s
 
     action = np.zeros_like(sim_node.target_control)
     process_list = []
@@ -178,7 +178,8 @@ if __name__ == "__main__":
                     sim_node.tctr_head[1] = 0.8
                     sim_node.tctr_slide[0] = 0.15
                 elif stm.state_idx == 17: # 放开枣
-                    sim_node.tctr_rgt_gripper[:] = 0.2
+                    sim_node.tctr_rgt_gripper[:] = 1.0
+                    sim_node.delay_cnt = int(0.2/sim_node.delta_t)
                 elif stm.state_idx == 18: # 升高度
                     sim_node.tctr_head[1] = 0.8
                     sim_node.tctr_slide[0] = 0.1
@@ -202,8 +203,8 @@ if __name__ == "__main__":
 
         for i in range(2, sim_node.njctrl):
             action[i] = step_func(action[i], sim_node.target_control[i], move_speed * sim_node.joint_move_ratio[i] * sim_node.delta_t)
-        yaw = Rotation.from_quat(np.array(obs["base_orientation"])[[1,2,3,0]]).as_euler("xyz")[2] + np.pi / 2
-        action[1] = -10 * yaw
+        # yaw = Rotation.from_quat(np.array(obs["base_orientation"])[[1,2,3,0]]).as_euler("xyz")[2] + np.pi / 2
+        # action[1] = -10 * yaw
 
         obs, _, _, _, _ = sim_node.step(action)
         

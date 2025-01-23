@@ -12,7 +12,7 @@ from discoverse.envs.mmk2_base import MMK2Cfg
 from discoverse.task_base import MMK2TaskBase, recoder_mmk2
 from discoverse.utils import get_body_tmat, step_func, SimpleStateMachine
 
-class MMK2TASK(MMK2TaskBase):
+class SimNode(MMK2TaskBase):
 
     def domain_randomization(self):
         # 随机 杯子位置
@@ -34,8 +34,9 @@ class MMK2TASK(MMK2TaskBase):
         self.mj_data.qpos[self.njq+7*3+1] += 2.*(np.random.random()-0.5) * 0.02
 
     def check_success(self):
-        # :TODO:
-        return True
+        tmat_coffeecup = get_body_tmat(self.mj_data, "coffeecup_white")
+        tmat_cup_lid = get_body_tmat(self.mj_data, "cup_lid")
+        return np.hypot(tmat_coffeecup[0, 3] - tmat_cup_lid[0, 3], tmat_coffeecup[1, 3] - tmat_cup_lid[1, 3]) < 0.02
 
 cfg = MMK2Cfg()
 cfg.use_gaussian_renderer = True  # 使用高斯渲染，false的时候只用mujoco
@@ -70,7 +71,7 @@ if __name__ == "__main__":
     parser.add_argument("--auto", action="store_true", help="auto run") # 减少渲染，关同步，提速减开销
     args = parser.parse_args()
 
-    data_idx, data_set_size = args.data_idx, args.data_set_size
+    data_idx, data_set_size = args.data_idx, args.data_idx + args.data_set_size
     if args.auto:
         cfg.headless = True
         cfg.sync = False

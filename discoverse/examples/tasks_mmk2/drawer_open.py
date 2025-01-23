@@ -12,19 +12,16 @@ from discoverse.envs.mmk2_base import MMK2Cfg
 from discoverse.task_base import MMK2TaskBase, recoder_mmk2
 from discoverse.utils import get_site_tmat, get_body_tmat, step_func, SimpleStateMachine
 
-class MMK2TASK(MMK2TaskBase):
+class SimNode(MMK2TaskBase):
 
     def domain_randomization(self):
         # 随机 抽屉位置
-        self.mj_data.qpos[self.njq+0] += 2.*(np.random.random()-0.5) * 0.05
-        self.mj_data.qpos[self.njq+1] += 2.*(np.random.random()-0.5) * 0.025
-
-        # 随机 苹果位置
-        # todo
+        self.mj_data.qpos[self.njq+1] += 2.*(np.random.random()-0.5) * 0.05 # 随机范围[-0.05,0.05]
+        self.origin_drawer_pos=self.mj_data.qpos[self.njq+1]
 
     def check_success(self):
-        # :TODO:
-        return True
+        diff = abs(self.mj_data.qpos[self.njq+1]-self.origin_drawer_pos)
+        return diff > 0.1
 
 cfg = MMK2Cfg()
 cfg.use_gaussian_renderer = False
@@ -57,16 +54,16 @@ if __name__ == "__main__":
     parser.add_argument("--auto", action="store_true", help="auto run")
     args = parser.parse_args()
 
-    data_idx, data_set_size = args.data_idx, args.data_set_size
+    data_idx, data_set_size = args.data_idx, args.data_idx + args.data_set_size
     if args.auto:
         cfg.headless = True
         cfg.sync = False
 
-    save_dir = os.path.join(DISCOVERSE_ROOT_DIR, "data/mmk2_cabinet_door_open")
+    save_dir = os.path.join(DISCOVERSE_ROOT_DIR, "data/mmk2_drawer_open")
     if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
+        os.makedirs(save_dir)
 
-    sim_node = MMK2TASK(cfg)
+    sim_node = SimNode(cfg)
     sim_node.teleop = None
     if hasattr(cfg, "save_mjb_and_task_config") and cfg.save_mjb_and_task_config and data_idx == 0:
         mujoco.mj_saveModel(sim_node.mj_model, os.path.join(save_dir, os.path.basename(cfg.mjcf_file_path).replace(".xml", ".mjb")))
@@ -104,7 +101,7 @@ if __name__ == "__main__":
                     sim_node.tctr_lft_gripper[:] = 1
                 elif stm.state_idx == 2: # 伸到抽屉把手
                     tmat_drawer = get_site_tmat(sim_node.mj_data, "cabinet_drawer_handle")
-                    target_posi = tmat_drawer[:3, 3]
+                    target_posi = tmat_drawer[:3, 3] + np.array([0.01,0,0])
                     sim_node.lft_arm_target_pose[:] = sim_node.get_tmat_wrt_mmk2base(target_posi)
                     sim_node.setArmEndTarget(sim_node.lft_arm_target_pose, sim_node.arm_action, "l", sim_node.sensor_lft_arm_qpos, Rotation.from_euler('zyx', [1.5807, 0, 0.6]).as_matrix())
                 elif stm.state_idx == 3: # 抓住把手

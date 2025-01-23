@@ -12,7 +12,7 @@ from discoverse.envs.mmk2_base import MMK2Cfg
 from discoverse.task_base import MMK2TaskBase, recoder_mmk2
 from discoverse.utils import get_body_tmat, step_func, SimpleStateMachine
 
-class MMK2TASK(MMK2TaskBase):
+class SimNode(MMK2TaskBase):
 
     def domain_randomization(self):
         # 随机 盒子和盘子位置
@@ -73,11 +73,11 @@ cfg.obj_list    = ["pan", "box"]
 cfg.sync     = False
 cfg.headless = False
 cfg.render_set  = {
-    "fps"    : 30,
-    "width"  : 1920,
-    "height" : 1080
+    "fps"    : 25,
+    "width"  : 640,
+    "height" : 480
 }
-cfg.obs_rgb_cam_id = None
+cfg.obs_rgb_cam_id = [0,1,2]
 cfg.save_mjb_and_task_config = True
 
 if __name__ == "__main__":
@@ -89,16 +89,16 @@ if __name__ == "__main__":
     parser.add_argument("--auto", action="store_true", help="auto run")
     args = parser.parse_args()
 
-    data_idx, data_set_size = args.data_idx, args.data_set_size
+    data_idx, data_set_size = args.data_idx, args.data_idx + args.data_set_size
     if args.auto:
         cfg.headless = True
         cfg.sync = False
 
-    save_dir = os.path.join(DISCOVERSE_ROOT_DIR, "data/mmk2_plate_coffecup")
+    save_dir = os.path.join(DISCOVERSE_ROOT_DIR, "data/mmk2_pick_pan")
     if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
+        os.makedirs(save_dir)
 
-    sim_node = MMK2TASK(cfg)
+    sim_node = SimNode(cfg)
     sim_node.teleop = None
     if hasattr(cfg, "save_mjb_and_task_config") and cfg.save_mjb_and_task_config:
         mujoco.mj_saveModel(sim_node.mj_model, os.path.join(save_dir, os.path.basename(cfg.mjcf_file_path).replace(".xml", ".mjb")))
