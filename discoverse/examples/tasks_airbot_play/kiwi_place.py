@@ -38,15 +38,16 @@ class SimNode(AirbotPlayTaskBase):
         return (abs(tmat_bowl[2, 2]) > 0.99) and np.hypot(tmat_jujube[0, 3] - tmat_bowl[0, 3], tmat_jujube[1, 3] - tmat_bowl[1, 3]) < 0.02
 
 cfg = AirbotPlayCfg()
-cfg.use_gaussian_renderer = True
+cfg.use_gaussian_renderer = True   # 3D高斯
 cfg.init_key = "ready"
+# 高斯模型对齐
 cfg.gs_model_dict["background"]  = "scene/lab3/point_cloud.ply"
 cfg.gs_model_dict["drawer_1"]    = "hinge/drawer_1.ply"
 cfg.gs_model_dict["drawer_2"]    = "hinge/drawer_2.ply"
 cfg.gs_model_dict["kiwi"]        = "object/kiwi.ply"
 cfg.gs_model_dict["plate_white"] = "object/plate_white.ply"
 cfg.gs_model_dict["flower_bowl"] = "object/flower_bowl.ply"
-
+# 场景文件
 cfg.mjcf_file_path = "mjcf/tasks_airbot_play/kiwi_place.xml"
 cfg.obj_list     = ["drawer_1", "drawer_2", "kiwi", "plate_white", "flower_bowl"]
 cfg.timestep     = 1/240

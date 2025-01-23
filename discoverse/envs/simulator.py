@@ -433,7 +433,7 @@ class SimulatorBase:
     
     # ---------------------------------- Override ----------------------------------
     # ------------------------------------------------------------------------------
-
+    # 接受一步action，做一步/多步物理仿真，返回observation, reward, done, info
     def step(self, action=None):
         for _ in range(self.decimation):
             self.updateControl(action)

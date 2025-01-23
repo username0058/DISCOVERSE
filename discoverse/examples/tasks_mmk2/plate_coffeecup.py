@@ -38,8 +38,9 @@ class MMK2TASK(MMK2TaskBase):
         return True
 
 cfg = MMK2Cfg()
-cfg.use_gaussian_renderer = True
-cfg.init_key = "pick"
+cfg.use_gaussian_renderer = True  # 使用高斯渲染，false的时候只用mujoco
+cfg.init_key = "pick"# 对应models文件，索引关键帧
+# 维护高斯模型的字典，名字与对应的3D高斯文件
 cfg.gs_model_dict["coffeecup_white"] = "object/teacup.ply"
 cfg.gs_model_dict["plate_white"]     = "object/plate_white.ply"
 cfg.gs_model_dict["cup_lid"]         = "object/teacup_lid.ply"
@@ -47,57 +48,59 @@ cfg.gs_model_dict["wood"]            = "object/wood.ply"
 cfg.gs_model_dict["background"]      = "scene/tsimf_library_0/point_cloud_for_mmk2.ply"
 
 cfg.mjcf_file_path = "mjcf/tasks_mmk2/plate_coffeecup.xml"
+# 读key名字，位置同步，对应xml文件中的物体--plate_coffeecup.xml
 cfg.obj_list    = ["plate_white", "coffeecup_white", "wood", "cup_lid"]
-cfg.sync     = True
-cfg.headless = False
-cfg.render_set  = {
+cfg.sync     = True # 是否与真实时间同步，false可提速
+cfg.headless = False # 无渲染模式，适用于服务器
+cfg.render_set  = { # 帧率，分辨率
     "fps"    : 25,
     "width"  : 640,
     "height" : 480
 }
-cfg.obs_rgb_cam_id = [0,1,2]
+cfg.obs_rgb_cam_id = [0,1,2] # 相机id
+# 实现快照功能，保存mjb和task配置文件
 cfg.save_mjb_and_task_config = True
 
 if __name__ == "__main__":
     np.set_printoptions(precision=3, suppress=True, linewidth=500)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_idx", type=int, default=0, help="data index")
-    parser.add_argument("--data_set_size", type=int, default=1, help="data set size")
-    parser.add_argument("--auto", action="store_true", help="auto run")
+    parser.add_argument("--data_idx", type=int, default=0, help="data index") # 开始的索引
+    parser.add_argument("--data_set_size", type=int, default=1, help="data set size")# 多少组数据
+    parser.add_argument("--auto", action="store_true", help="auto run") # 减少渲染，关同步，提速减开销
     args = parser.parse_args()
 
     data_idx, data_set_size = args.data_idx, args.data_set_size
     if args.auto:
         cfg.headless = True
         cfg.sync = False
-
+    # save路径，生成data
     save_dir = os.path.join(DISCOVERSE_ROOT_DIR, "data/mmk2_plate_coffecup")
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
-
+    # 模型快照
     sim_node = MMK2TASK(cfg)
     if hasattr(cfg, "save_mjb_and_task_config") and cfg.save_mjb_and_task_config and data_idx == 0:
         mujoco.mj_saveModel(sim_node.mj_model, os.path.join(save_dir, os.path.basename(cfg.mjcf_file_path).replace(".xml", ".mjb")))
         shutil.copyfile(os.path.abspath(__file__), os.path.join(save_dir, os.path.basename(__file__)))
 
     stm = SimpleStateMachine()
-    stm.max_state_cnt = 16
-    max_time = 20.0 #s
+    stm.max_state_cnt = 16 # 总状态数
+    max_time = 20.0 #s 最长执行时间，超过就认为失败，防止阻塞
 
     action = np.zeros_like(sim_node.target_control)
     process_list = []
 
-    pick_lip_arm = "r"
+    pick_lip_arm = "r" # 用哪个手抓取
     move_speed = 1.
-    obs = sim_node.reset()
+    obs = sim_node.reset() # 重置环境
     while sim_node.running:
         if sim_node.reset_sig:
-            sim_node.reset_sig = False
+            sim_node.reset_sig = False # reset signal，reset的时候变成true
             stm.reset()
             action[:] = sim_node.target_control[:]
-            act_lst, obs_lst = [], []
-
+            act_lst, obs_lst = [], []  # 动作列表，观测列表
+        # 按r可以重置看
         try:
             if stm.trigger():
                 if stm.state_idx == 0: # 降高度

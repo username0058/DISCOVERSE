@@ -45,10 +45,10 @@ class AirbotPlayTaskBase(AirbotPlayBase):
         mujoco.mj_forward(self.mj_model, self.mj_data)
         self.reset_sig = True
 
-    def domain_randomization(self):
+    def domain_randomization(self):# 相机视角、初始化，每次reset的时候会被调用
         pass
 
-    def checkActionDone(self):
+    def checkActionDone(self):# 任务是否完成
         joint_done = np.allclose(self.sensor_joint_qpos[:6], self.target_control[:6], atol=3e-2) and np.abs(self.sensor_joint_qvel[:6]).sum() < 0.1
         gripper_done = np.allclose(self.sensor_joint_qpos[6], self.target_control[6], atol=0.4) and np.abs(self.sensor_joint_qvel[6]).sum() < 0.125
         self.delay_cnt -= 1
@@ -60,7 +60,7 @@ class AirbotPlayTaskBase(AirbotPlayBase):
         }
         return joint_done and gripper_done and delay_done
 
-    def printMessage(self):
+    def printMessage(self):# debug用
         super().printMessage()
         print("    target control = ", self.target_control)
         print("    action done: ")
