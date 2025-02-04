@@ -86,38 +86,51 @@ class SimulatorBase:
     options = mujoco.MjvOption()
 
     def __init__(self, config:BaseConfig):
+        # 保存配置对象
         self.config = config
 
+        # 确定MJCF文件的路径
         if self.config.mjcf_file_path.startswith("/"):
             self.mjcf_file = self.config.mjcf_file_path
         else:
             self.mjcf_file = os.path.join(DISCOVERSE_ASSERT_DIR, self.config.mjcf_file_path)
+        
+        # 检查MJCF文件是否存在
         if os.path.exists(self.mjcf_file):
             print("mjcf found: {}".format(self.mjcf_file))
         else:
             print("\033[0;31;40mFailed to load mjcf: {}\033[0m".format(self.mjcf_file))
             raise FileNotFoundError("Failed to load mjcf: {}".format(self.mjcf_file))
-        self.free_camera = mujoco.MjvCamera()
+        
+        # 初始化自由相机
+        self.free_camera = mujoco.MjvCamera()# 创建一个MjvCamera对象作为自由相机
         self.free_camera.fixedcamid = -1
-        self.free_camera.type = mujoco._enums.mjtCamera.mjCAMERA_FREE
+        self.free_camera.type = mujoco._enums.mjtCamera.mjCAMERA_FREE# 设置相机类型为自由相机
 
+        # 加载MJCF文件并设置默认自由相机
         self.load_mjcf()
-        mujoco.mjv_defaultFreeCamera(self.mj_model, self.free_camera)
+        mujoco.mjv_defaultFreeCamera(self.mj_model, self.free_camera)# 设置默认的自由相机参数
 
+        # 配置高斯渲染器（如果启用）
         self.config.use_gaussian_renderer = self.config.use_gaussian_renderer and DISCOVERSE_GAUSSIAN_RENDERER
         if self.config.use_gaussian_renderer:
             self.gs_renderer = GSRenderer(self.config.gs_model_dict, self.config.render_set["width"], self.config.render_set["height"])
             self.last_cam_id = self.cam_id
             self.show_gaussian_img = True
+            # 设置相机的视场角（FOV）
             if self.cam_id == -1:
                 self.gs_renderer.set_camera_fovy(self.mj_model.vis.global_.fovy * np.pi / 180.)
             else:
                 self.gs_renderer.set_camera_fovy(self.mj_model.cam_fovy[self.cam_id] * np.pi / 180.0)
 
+        # 设置模拟参数
+        # 计算模拟时间步长：
+        # 基于模型的时间步长和抽取因子（decimation）计算
         self.decimation = self.config.decimation
         self.delta_t = self.mj_model.opt.timestep * self.decimation
         self.render_fps = self.config.render_set["fps"]
 
+        # 检查对象名称（如果使用高斯渲染器）
         if self.config.use_gaussian_renderer:
             obj_names_check = True
             obj_names = self.mj_model.names.decode().split("\x00")
@@ -127,22 +140,32 @@ class SimulatorBase:
                     obj_names_check = False
             assert obj_names_check, "ERROR: Invalid object name"
 
+        # 设置默认MuJoCo选项
         mujoco.mjv_defaultOption(self.options)
 
+        # 设置非无头模式下的渲染参数
         if not self.config.headless:
             self.config.render_set["cv_windowname"] = self.mj_model.names.decode().split("\x00")[0].upper()
 
+            # 创建共享内存用于图像数据
             self.shm = shared_memory.SharedMemory(create=True, size=(self.config.render_set["height"] * self.config.render_set["width"] * 3) * np.uint8().itemsize)
             self.img_vis_shared = np.ndarray((self.config.render_set["height"], self.config.render_set["width"], 3), dtype=np.uint8, buffer=self.shm.buf)
             self.key = Value('i', lock=True)
             self.mouseParam = Array("i", 4, lock=True)
 
+            # 启动图像显示进程
             self.imshow_process = Process(target=imshow_loop, args=(self.config.render_set, self.shm, self.key, self.mouseParam))
             self.imshow_process.start()
 
+        # 初始化渲染时间和模型数据
+        # 重置MuJoCo数据并执行初始的前向动力学计算：
+        # 记录最后渲染时间。
+        # 重置模型数据。
+        # 执行前向动力学计算
         self.last_render_time = time.time()
         mujoco.mj_resetData(self.mj_model, self.mj_data)
         mujoco.mj_forward(self.mj_model, self.mj_data)
+
 
     def load_mjcf(self):
         if self.mjcf_file.endswith(".xml"):
@@ -328,52 +351,99 @@ class SimulatorBase:
         self.camera_pose_changed = True
 
     def getCameraPose(self, cam_id):
+        """
+        获取指定相机的位置和方向。
+
+        参数:
+        cam_id (int): 相机ID。-1表示自由相机，其他值表示预定义相机。
+
+        返回:
+        tuple: 包含两个元素：
+            - camera_position (numpy.ndarray): 相机的3D位置。
+            - camera_orientation (numpy.ndarray): 相机的方向，以四元数形式表示。
+        """
         if cam_id == -1:
+            # 处理自由相机
+            # 计算旋转矩阵，考虑相机的仰角和方位角
             rotation_matrix = self.camera_rmat @ Rotation.from_euler('xyz', [self.free_camera.elevation * np.pi / 180.0, self.free_camera.azimuth * np.pi / 180.0, 0.0]).as_matrix()
+            # 计算相机位置，基于注视点、距离和旋转矩阵
             camera_position = self.free_camera.lookat + self.free_camera.distance * rotation_matrix[:3,2]
         else:
+            # 处理预定义相机
+            # 从MuJoCo数据中直接获取旋转矩阵和位置
             rotation_matrix = np.array(self.mj_data.camera(self.camera_names[cam_id]).xmat).reshape((3,3))
             camera_position = self.mj_data.camera(self.camera_names[cam_id]).xpos
 
+        # 返回相机位置和方向（四元数形式，调整顺序）
         return camera_position, Rotation.from_matrix(rotation_matrix).as_quat()[[3,0,1,2]]
 
+
     def getObjPose(self, name):
+        """
+        获取指定对象的位置和方向。
+
+        参数:
+        name (str): 对象的名称。
+
+        返回:
+        tuple: 包含两个元素：
+            - position (numpy.ndarray): 对象的3D位置。
+            - quat (numpy.ndarray): 对象的方向，以四元数形式表示。
+        如果对象不存在，则返回 (None, None)。
+        """
         try:
+            # 尝试获取body对象的位置和方向
             position = self.mj_data.body(name).xpos
             quat = self.mj_data.body(name).xquat
             return position, quat
         except KeyError:
             try:
+                # 如果不是body，尝试获取geom对象的位置和方向
                 position = self.mj_data.geom(name).xpos
+                # 将旋转矩阵转换为四元数，并调整四元数的顺序
                 quat = Rotation.from_matrix(self.mj_data.geom(name).xmat.reshape((3,3))).as_quat()[[3,0,1,2]]
                 return position, quat
             except KeyError:
+                # 如果既不是body也不是geom，打印错误信息并返回None
                 print("Invalid object name: {}".format(name))
                 return None, None
 
+
     def render(self):
+        """
+        渲染当前场景，更新观察图像，并处理用户交互。
+
+        此方法负责更新场景状态，生成RGB和深度图像，处理用户输入，
+        并根据配置同步渲染过程。
+        """
         self.render_cnt += 1
 
+        # 如果启用了高斯渲染器并需要显示高斯图像，则更新高斯场景
         if self.config.use_gaussian_renderer and self.show_gaussian_img:
             self.update_gs_scene()
 
+        # 生成RGB观察图像
         self.img_rgb_obs_s = {}
         for id in self.config.obs_rgb_cam_id:
             img = self.getRgbImg(id)
             self.img_rgb_obs_s[id] = img
 
+        # 生成深度观察图像
         self.img_depth_obs_s = {}
         for id in self.config.obs_depth_cam_id:
             img = self.getDepthImg(id)
             self.img_depth_obs_s[id] = img
 
+        # 准备可视化图像
         if not self.renderer._depth_rendering:
+            # 如果不是深度渲染，准备RGB图像
             if self.cam_id in self.config.obs_rgb_cam_id:
                 img_vis = cv2.cvtColor(self.img_rgb_obs_s[self.cam_id], cv2.COLOR_RGB2BGR)
             else:
                 img_rgb = self.getRgbImg(self.cam_id)
                 img_vis = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
         else:
+            # 如果是深度渲染，准备深度图像
             if self.cam_id in self.config.obs_depth_cam_id:
                 img_depth = self.img_depth_obs_s[self.cam_id]
             else:
@@ -381,20 +451,25 @@ class SimulatorBase:
             if not img_depth is None:
                 img_vis = cv2.applyColorMap(cv2.convertScaleAbs(img_depth, alpha=25.5), cv2.COLORMAP_JET)
 
+        # 如果不是无头模式，将可视化图像复制到共享内存
         if not self.config.headless:
             np.copyto(self.img_vis_shared, img_vis)
 
+        # 如果启用同步，等待以保持指定的渲染帧率
         if self.config.sync:
             wait_time_s = max(1./self.render_fps - time.time() + self.last_render_time, 0.0)
             time.sleep(wait_time_s)
 
+        # 如果不是无头模式，处理用户输入
         if not self.config.headless:
             self.cv2MouseCallback()
             if not self.cv2WindowKeyPressCallback(self.key.value):
                 self.running = False
             self.key.value = -1
 
+        # 更新上次渲染时间
         self.last_render_time = time.time()
+
 
     # ------------------------------------------------------------------------------
     # ---------------------------------- Override ----------------------------------
@@ -449,8 +524,18 @@ class SimulatorBase:
         return self.getObservation(), self.getPrivilegedObservation(), self.getReward(), self.checkTerminated(), {}
 
     def view(self):
+        # 更新模拟时间
         self.mj_data.time += self.delta_t
+
+        # 重置所有关节速度为零
         self.mj_data.qvel[:] = 0
+
+        # 调用MuJoCo的前向动力学函数，更新模拟状态
         mujoco.mj_forward(self.mj_model, self.mj_data)
+
+        # 检查是否需要渲染新帧
+        # 这确保了渲染以指定的帧率进行，不受模拟步骤频率的影响
         if self.render_cnt-1 < self.mj_data.time * self.render_fps:
+            # 如果是时候渲染新帧，调用渲染方法
             self.render()
+
