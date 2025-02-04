@@ -106,22 +106,26 @@ class SimulatorBase:
         self.delta_t = self.mj_model.opt.timestep * self.decimation
 
         if self.config.enable_render:
+            # 设置自由相机
             self.free_camera = mujoco.MjvCamera()
             self.free_camera.fixedcamid = -1
             self.free_camera.type = mujoco._enums.mjtCamera.mjCAMERA_FREE
             mujoco.mjv_defaultFreeCamera(self.mj_model, self.free_camera)
-
+            # 检查是否使用高斯渲染器
             self.config.use_gaussian_renderer = self.config.use_gaussian_renderer and DISCOVERSE_GAUSSIAN_RENDERER
             if self.config.use_gaussian_renderer:
+                # 初始化高斯渲染器
                 self.gs_renderer = GSRenderer(self.config.gs_model_dict, self.config.render_set["width"], self.config.render_set["height"])
                 self.last_cam_id = self.cam_id
                 self.show_gaussian_img = True
+                # 设置相机视场角
                 if self.cam_id == -1:
                     self.gs_renderer.set_camera_fovy(self.mj_model.vis.global_.fovy * np.pi / 180.)
                 else:
                     self.gs_renderer.set_camera_fovy(self.mj_model.cam_fovy[self.cam_id] * np.pi / 180.0)
-
+            # 设置渲染帧率
             self.render_fps = self.config.render_set["fps"]
+            # 如果使用高斯渲染器，检查对象名称是否有效
             if self.config.use_gaussian_renderer:
                 obj_names_check = True
                 obj_names = self.mj_model.names.decode().split("\x00")
@@ -130,9 +134,9 @@ class SimulatorBase:
                         print(f"\033[0;31;40mInvalid object name: {name}\033[0m")
                         obj_names_check = False
                 assert obj_names_check, "ERROR: Invalid object name"
-
+            # 设置默认渲染选项
             mujoco.mjv_defaultOption(self.options)
-
+            # 如果不是无头模式
             if not self.config.headless:
                 self.config.render_set["cv_windowname"] = self.mj_model.names.decode().split("\x00")[0].upper()
 
@@ -208,6 +212,7 @@ class SimulatorBase:
         self.mouseParam[3] = 0
 
         if self.cam_id == -1:
+            # 这部分将不同的鼠标按钮+移动组合映射到MuJoCo模拟中的特定相机动作。
             action = None
             if flags == cv2.EVENT_FLAG_LBUTTON and event == cv2.EVENT_MOUSEMOVE:
                 action = mujoco.mjtMouse.mjMOUSE_ROTATE_V
@@ -215,6 +220,7 @@ class SimulatorBase:
                 action = mujoco.mjtMouse.mjMOUSE_MOVE_V
             elif flags == cv2.EVENT_FLAG_MBUTTON and event == cv2.EVENT_MOUSEMOVE:
                 action = mujoco.mjtMouse.mjMOUSE_ZOOM
+            # 如果确定了动作，它会计算鼠标移动量，并使用MuJoCo的mjv_moveCamera函数来更新相机位置。
             if not action is None:
                 self.camera_pose_changed = True
                 height = self.config.render_set["height"]
@@ -225,14 +231,19 @@ class SimulatorBase:
         self.mouse_last_y = float(y)
 
     def update_gs_scene(self):
+        # 更新高斯散射渲染器中的对象姿态
         for name in self.config.obj_list + self.config.rb_link_list:
             trans, quat_wxyz = self.getObjPose(name)
             self.gs_renderer.set_obj_pose(name, trans, quat_wxyz)
-
+        # 如果需要，更新高斯数据
         if self.gs_renderer.update_gauss_data:
+            # 重置更新标志
             self.gs_renderer.update_gauss_data = False
+            # 标记渲染器需要重新渲染
             self.gs_renderer.renderer.need_rerender = True
+            # 更新高斯点的位置
             self.gs_renderer.renderer.gaussians.xyz[self.gs_renderer.renderer.gau_env_idx:] = multiple_quaternion_vector3d(self.gs_renderer.renderer.gau_rot_all_cu[self.gs_renderer.renderer.gau_env_idx:], self.gs_renderer.renderer.gau_ori_xyz_all_cu[self.gs_renderer.renderer.gau_env_idx:]) + self.gs_renderer.renderer.gau_xyz_all_cu[self.gs_renderer.renderer.gau_env_idx:]
+            # 更新高斯点的旋转
             self.gs_renderer.renderer.gaussians.rot[self.gs_renderer.renderer.gau_env_idx:] = multiple_quaternions(self.gs_renderer.renderer.gau_rot_all_cu[self.gs_renderer.renderer.gau_env_idx:], self.gs_renderer.renderer.gau_ori_rot_all_cu[self.gs_renderer.renderer.gau_env_idx:])
 
     def getRgbImg(self, cam_id):
