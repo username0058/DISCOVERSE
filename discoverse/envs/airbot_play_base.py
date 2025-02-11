@@ -20,7 +20,9 @@ class AirbotPlayCfg(BaseConfig):
     obs_rgb_cam_id  = None
     rb_link_list   = ["arm_base", "link1", "link2", "link3", "link4", "link5", "link6", "right", "left"]
     obj_list       = []
-    use_gaussian_renderer = False
+    use_gaussian_renderer = False # 默认关闭三种渲染模式
+    use_segmentation_renderer = False
+    use_depth_renderer = False
     gs_model_dict = {
         "arm_base"  : "airbot_play/arm_base.ply",
         "link1"     : "airbot_play/link1.ply",
@@ -36,6 +38,7 @@ class AirbotPlayCfg(BaseConfig):
 class AirbotPlayBase(SimulatorBase):
     def __init__(self, config: AirbotPlayCfg):
         self.nj = 7
+        self.robot = "AirbotPlay"
         super().__init__(config)
 
     def post_load_mjcf(self):
@@ -88,7 +91,8 @@ class AirbotPlayBase(SimulatorBase):
             "jf"   : self.sensor_joint_force.tolist(),
             "ep"   : self.sensor_endpoint_posi_local.tolist(),
             "eq"   : self.sensor_endpoint_quat_local.tolist(),
-            "img"  : self.img_rgb_obs_s
+            "img"  : self.img_rgb_obs_s,
+            "seg"  : self.img_seg_obs_s
         }
         return self.obs
 

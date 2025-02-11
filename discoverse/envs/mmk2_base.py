@@ -60,6 +60,7 @@ class MMK2Base(SimulatorBase):
     def __init__(self, config: MMK2Cfg):
         self.njq = 28
         self.njctrl = 19
+        self.robot = "mmk2"
 
         super().__init__(config)
 
@@ -170,7 +171,7 @@ class MMK2Base(SimulatorBase):
     def checkTerminated(self):
         return False
 
-    def getObservation(self):
+    def getObservation(self):# 需要注意的是这里我们只给mmk2与airbot_play添加了seg对象
         self.obs = {
             "time" : self.mj_data.time,
             "jq"   : self.sensor_qpos.tolist(),
@@ -178,7 +179,8 @@ class MMK2Base(SimulatorBase):
             # "jf"   : self.sensor_force.tolist(),
             "base_position"    : self.sensor_base_position.tolist(),
             "base_orientation" : self.sensor_base_orientation.tolist(),
-            "img"  : self.img_rgb_obs_s
+            "img"  : self.img_rgb_obs_s,
+            "seg"  : self.img_seg_obs_s
         }
         return self.obs
 

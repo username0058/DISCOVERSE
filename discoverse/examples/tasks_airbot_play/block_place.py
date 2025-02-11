@@ -60,6 +60,10 @@ cfg.render_set   = {
 }
 cfg.obs_rgb_cam_id = [0, 1]
 cfg.save_mjb_and_task_config = True
+# test seg
+cfg.obs_seg_cam_id = [0, 1]
+cfg.use_segmentation_renderer = True
+
 
 if __name__ == "__main__":
     np.set_printoptions(precision=3, suppress=True, linewidth=500)
@@ -139,6 +143,16 @@ if __name__ == "__main__":
                     tmat_tgt_local[2,3] += 0.05
                     sim_node.target_control[:6] = arm_fik.properIK(tmat_tgt_local[:3,3], trmat, sim_node.mj_data.qpos[:6])
 
+                # 计算当前动作(action)和目标控制(sim_node.target_control)之间的绝对差值。
+                # np.abs() 确保所有差值都是正数。
+                # 这个差值表示每个关节需要移动的距离。
+                # sim_node.joint_move_ratio = dif / (np.max(dif) + 1e-6)
+
+                # 计算每个关节的移动比率。
+                # np.max(dif) 找出所有关节中最大的差值。
+                # + 1e-6 是为了避免除以零的情况（当所有差值都为0时）。
+                # 通过将每个关节的差值除以最大差值（加上一个很小的数），得到每个关节的相对移动比率。
+
                 dif = np.abs(action - sim_node.target_control)
                 sim_node.joint_move_ratio = dif / (np.max(dif) + 1e-6)
 
@@ -159,9 +173,9 @@ if __name__ == "__main__":
             action[i] = step_func(action[i], sim_node.target_control[i], move_speed * sim_node.joint_move_ratio[i] * sim_node.delta_t)
         action[6] = sim_node.target_control[6]
 
-        obs, _, _, _, _ = sim_node.step(action)
+        obs, _, _, _, _ = sim_node.step(action)# obs存储时间位置速度和力，由传感器拿到
 
-        if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
+        if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:# 还没保存完仿真
             act_lst.append(action.tolist().copy())
             obs_lst.append(obs)
 

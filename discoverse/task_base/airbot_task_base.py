@@ -25,6 +25,9 @@ def recoder_airbot_play(save_path, act_lst, obs_lst, cfg):
 
     for id in cfg.obs_rgb_cam_id:
         mediapy.write_video(os.path.join(save_path, f"cam_{id}.mp4"), [o['img'][id] for o in obs_lst], fps=cfg.render_set["fps"])
+    if cfg.use_segmentation_renderer:
+        for id in cfg.obs_seg_cam_id:
+            mediapy.write_video(os.path.join(save_path, f"seg_cam_{id}.mp4"), [o['seg'][id] for o in obs_lst], fps=cfg.render_set["fps"])
 
 class AirbotPlayTaskBase(AirbotPlayBase):
     target_control = np.zeros(7)

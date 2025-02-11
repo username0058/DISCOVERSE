@@ -1,0 +1,14 @@
+<mujoco model="block_place">
+
+  <worldbody>
+
+    <!-- ======= block ======= -->
+    <body name="block_green" pos="0 0.85 0.7145">
+      <joint type="free" frictionloss="0.00001"/>
+      <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" />
+      <geom rgba="0.21 0.36 0.21 1" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001" pos="0 0 0" size="0.0145 0.0145 0.0145" type="box"/>
+    </body>
+
+  </worldbody>
+
+</mujoco>

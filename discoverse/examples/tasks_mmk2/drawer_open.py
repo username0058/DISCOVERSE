@@ -44,7 +44,8 @@ cfg.render_set  = {
 }
 cfg.obs_rgb_cam_id = [0,1,2]
 cfg.save_mjb_and_task_config = True
-
+cfg.obs_seg_cam_id = [0,1,2]
+cfg.use_segmentation_renderer = True
 if __name__ == "__main__":
     np.set_printoptions(precision=3, suppress=True, linewidth=500)
 

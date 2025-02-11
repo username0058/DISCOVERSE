@@ -1,4 +1,3 @@
-
 class BaseConfig:
     mjcf_file_path = ""
     decimation     = 2
@@ -12,8 +11,11 @@ class BaseConfig:
     }
     obs_rgb_cam_id = None
     obs_depth_cam_id = None
+    obs_seg_cam_id = None
     rb_link_list   = []
     obj_list       = []
     gs_model_dict  = {}
     use_gaussian_renderer = False
+    use_depth_renderer = False
+    use_segmentation_renderer = False
     enable_render = True

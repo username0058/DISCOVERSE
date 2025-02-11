@@ -12,6 +12,7 @@ from scipy.spatial.transform import Rotation
 from discoverse import DISCOVERSE_ASSERT_DIR
 from discoverse.utils import BaseConfig
 
+import warnings
 try:
     from discoverse.gaussian_renderer import GSRenderer
     from discoverse.gaussian_renderer.util_gau import multiple_quaternion_vector3d, multiple_quaternions
@@ -68,6 +69,7 @@ def imshow_loop(render_cfg, shm, key, mouseParam):
 class SimulatorBase:
     running = True
     obs = None
+    robot = None # Use to distinguish different robot
 
     cam_id = -1
     last_cam_id = -1
@@ -111,12 +113,13 @@ class SimulatorBase:
             self.free_camera.fixedcamid = -1
             self.free_camera.type = mujoco._enums.mjtCamera.mjCAMERA_FREE
             mujoco.mjv_defaultFreeCamera(self.mj_model, self.free_camera)
+            ########################################3D Gauss Renderer############################################
             # 检查是否使用高斯渲染器
-            self.config.use_gaussian_renderer = self.config.use_gaussian_renderer and DISCOVERSE_GAUSSIAN_RENDERER
+            self.config.use_gaussian_renderer = self.config.use_gaussian_renderer and DISCOVERSE_GAUSSIAN_RENDERER 
             if self.config.use_gaussian_renderer:
                 # 初始化高斯渲染器
                 self.gs_renderer = GSRenderer(self.config.gs_model_dict, self.config.render_set["width"], self.config.render_set["height"])
-                self.last_cam_id = self.cam_id
+                self.last_cam_id = self.cam_id # 提升性能 懒加载
                 self.show_gaussian_img = True
                 # 设置相机视场角
                 if self.cam_id == -1:
@@ -133,21 +136,41 @@ class SimulatorBase:
                     if not name in obj_names:
                         print(f"\033[0;31;40mInvalid object name: {name}\033[0m")
                         obj_names_check = False
+                       
                 assert obj_names_check, "ERROR: Invalid object name"
+            ########################################3D Gauss Renderer############################################
+            ########################################Segmentation Renderer############################################
+            # 检查是否使用分割渲染器--只有mujoco自己有，这里我们认为他是从属的渲染器，我们为其单独提供一个渲染器接口
+            if self.config.use_segmentation_renderer:
+                self.renderer_seg.disable_depth_rendering()
+                self.renderer_seg.enable_segmentation_rendering()# 打开分割渲染器
+                self.show_segmentation_img = True # 默认打开分割渲染器的图像显示
+            ########################################Depth Renderer############################################
+            # 检查是否使用深度渲染器--这个是mujoco自带的深度渲染器，而3DGauss的渲染器自己带有深度渲染器也可以通过函数直接调用，
+            # TODO：完善深度渲染器代码，但不一定有必要，可以从3D高斯渲染器直接拿到，需要再建一个renderer实例
+            # self.config.use_depth_renderer = self.config.use_depth_renderer \
+            #     and not self.config.use_gaussian_renderer and not self.config.use_segmentation_renderer
+            # if self.config.use_depth_renderer:
+            #     self.renderer.disable_segmentation_rendering()
+            #     self.renderer.enable_depth_rendering()
             # 设置默认渲染选项
             mujoco.mjv_defaultOption(self.options)
-            # 如果不是无头模式
+            # 如果不是无头模式--用于画面显示
             if not self.config.headless:
+                # 设置渲染窗口的名称为模型名称的第一个元素，并转换为大写
                 self.config.render_set["cv_windowname"] = self.mj_model.names.decode().split("\x00")[0].upper()
-
+                # 创建共享内存，用于存储渲染图像
                 self.shm = shared_memory.SharedMemory(create=True, size=(self.config.render_set["height"] * self.config.render_set["width"] * 3) * np.uint8().itemsize)
+                # 创建一个 NumPy 数组，使用共享内存作为缓冲区，用于可视化图像
                 self.img_vis_shared = np.ndarray((self.config.render_set["height"], self.config.render_set["width"], 3), dtype=np.uint8, buffer=self.shm.buf)
+                # 创建一个共享整数变量，用于键盘输入
                 self.key = Value('i', lock=True)
+                # 创建一个共享整数数组，用于鼠标参数
                 self.mouseParam = Array("i", 4, lock=True)
-
+                # 创建并启动一个新进程，用于显示图像
                 self.imshow_process = Process(target=imshow_loop, args=(self.config.render_set, self.shm, self.key, self.mouseParam))
                 self.imshow_process.start()
-
+            # 记录最后一次渲染的时间
             self.last_render_time = time.time()
 
         mujoco.mj_resetData(self.mj_model, self.mj_data)
@@ -164,7 +187,7 @@ class SimulatorBase:
         if self.config.enable_render:
             for i in range(self.mj_model.ncam):
                 self.camera_names.append(self.mj_model.camera(i).name)
-
+            # RGB id
             if type(self.config.obs_rgb_cam_id) is int:
                 assert -2 < self.config.obs_rgb_cam_id < len(self.camera_names), "Invalid obs_rgb_cam_id {}".format(self.config.obs_rgb_cam_id)
                 tmp_id = self.config.obs_rgb_cam_id
@@ -174,7 +197,7 @@ class SimulatorBase:
                     assert -2 < cam_id < len(self.camera_names), "Invalid obs_rgb_cam_id {}".format(cam_id)
             elif self.config.obs_rgb_cam_id is None:
                 self.config.obs_rgb_cam_id = []
-            
+            # Depth id
             if type(self.config.obs_depth_cam_id) is int:
                 assert -2 < self.config.obs_depth_cam_id < len(self.camera_names), "Invalid obs_depth_cam_id {}".format(self.config.obs_depth_cam_id)
             elif type(self.config.obs_depth_cam_id) is list:
@@ -182,9 +205,18 @@ class SimulatorBase:
                     assert -2 < cam_id < len(self.camera_names), "Invalid obs_depth_cam_id {}".format(cam_id)
             elif self.config.obs_depth_cam_id is None:
                 self.config.obs_depth_cam_id = []
-
+            # Seg id
+            if type(self.config.obs_seg_cam_id) is int:
+                assert -2 < self.config.obs_seg_cam_id < len(self.camera_names), "Invalid obs_seg_cam_id {}".format(self.config.obs_seg_cam_id)
+            elif type(self.config.obs_seg_cam_id) is list:
+                for cam_id in self.config.obs_seg_cam_id:
+                    assert -2 < cam_id < len(self.camera_names), "Invalid obs_seg_cam_id {}".format(cam_id)
+            elif self.config.obs_seg_cam_id is None:
+                self.config.obs_seg_cam_id = []           
+            # 实例化Renderer
             self.renderer = mujoco.Renderer(self.mj_model, self.config.render_set["height"], self.config.render_set["width"])
-
+            if self.config.use_segmentation_renderer:# 新建一个专门用于分割的渲染器，宽高与正常使用的普通渲染器一致
+                self.renderer_seg = mujoco.Renderer(self.mj_model, self.config.render_set["height"], self.config.render_set["width"])
         self.post_load_mjcf()
 
     def post_load_mjcf(self):
@@ -251,6 +283,7 @@ class SimulatorBase:
             if cam_id == -1:
                 self.renderer.update_scene(self.mj_data, self.free_camera, self.options)
                 self.gs_renderer.set_camera_fovy(self.mj_model.vis.global_.fovy * np.pi / 180.0)
+            # 只有当当前相机ID与上一次不同时，才会更新某些相机参数
             if self.last_cam_id != cam_id and cam_id > -1:
                 self.gs_renderer.set_camera_fovy(self.mj_model.cam_fovy[cam_id] * np.pi / 180.0)
             self.last_cam_id = cam_id
@@ -291,7 +324,32 @@ class SimulatorBase:
                 return None
             depth_img = self.renderer.render()
             return depth_img
+    def getSegImg(self, cam_id, target_body_name: list = []) -> np.ndarray:
+        if self.config.use_segmentation_renderer and self.show_segmentation_img:
+            if cam_id == -1:
+                self.renderer_seg.update_scene(self.mj_data, self.free_camera, self.options)
+            elif cam_id > -1:
+                self.renderer_seg.update_scene(self.mj_data, self.camera_names[cam_id], self.options)
+            else:
+                return None
+            seg = self.renderer_seg.render()
+            geom_ids = seg[:, :, 0]
 
+            if len(target_body_name) > 0:
+                mask = np.zeros_like(geom_ids, dtype=np.uint8)
+                for body_name in target_body_name:
+                    mask[np.where((self.renderer_seg.model.body(body_name).geomadr <= geom_ids) & (geom_ids < self.renderer_seg.model.body(body_name).geomadr + self.renderer_seg.model.body(body_name).geomnum))] = 255
+                seg_img = mask
+            else:
+                geom_ids = geom_ids.astype(np.float64) + 1
+                geom_ids = geom_ids / geom_ids.max()
+                pixels = 255*geom_ids
+                seg_img = pixels.astype(np.uint8)
+
+            return seg_img
+        else:
+            warnings.warn("\nSegmentation renderer is not enabled! \nPlease change cfg.use_segmentation_renderer to open it.\n")
+            return None
     def cv2WindowKeyPressCallback(self, key):
         if key == -1:
             return True
@@ -434,7 +492,15 @@ class SimulatorBase:
             img = self.getDepthImg(id)
             self.img_depth_obs_s[id] = img
 
+        # 生成分割图像
+        self.img_seg_obs_s = {}
+        target_body_list = ["bowl_pink","block_green"]
+        for id in self.config.obs_seg_cam_id:
+            img = self.getSegImg(id, target_body_list)
+            self.img_seg_obs_s[id] = img  
+             
         # 准备可视化图像
+        # TODO:加入分割图像的可视化
         if not self.renderer._depth_rendering:
             # 如果不是深度渲染，准备RGB图像
             if self.cam_id in self.config.obs_rgb_cam_id:
@@ -481,7 +547,11 @@ class SimulatorBase:
 
     def updateControl(self, action):
         pass
-
+    # 使用 @abstractmethod 装饰器定义的方法是抽象方法。
+    # 抽象方法在基类中只提供接口定义，不需要实现具体功能。
+    # 子类必须实现这些方法，提供具体的实现细节。
+    # 包含抽象方法的类通常是抽象基类。
+    # 抽象基类不能被直接实例化，必须被子类继承并实现所有抽象方法。
     @abstractmethod
     def post_physics_step(self):
         pass

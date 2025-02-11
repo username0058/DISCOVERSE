@@ -22,7 +22,6 @@ class SimNode(AirbotPlayTaskBase):
             self.mj_model.camera("eye_side").pos.copy(),
             self.mj_model.camera("eye_side").quat.copy(),
         )
-
     def domain_randomization(self):
         # 随机 2个绿色长方体位置
 
