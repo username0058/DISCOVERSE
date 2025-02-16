@@ -590,7 +590,7 @@ class SimulatorBase:
         self.post_physics_step()
         if self.config.enable_render and self.render_cnt-1 < self.mj_data.time * self.render_fps:
             self.render()
-
+            
         return self.getObservation(), self.getPrivilegedObservation(), self.getReward(), self.checkTerminated(), {}
 
     def view(self):
