@@ -19,6 +19,7 @@ from visionlab.vison_seg import ObjectTracker, render_frames
 from multiprocessing import Pool, Queue
 import threading    # 用于绘制渲染窗口的处理线程
 
+# python discoverse/examples/tasks_use_mask/block_place_multi.py  --data_idx 0 --data_set_size 1 --auto
 
 class SimNode(AirbotPlayTaskBase):
     def __init__(self, config: AirbotPlayCfg):
