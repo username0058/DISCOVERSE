@@ -4,7 +4,8 @@ from .statemachine import SimpleStateMachine
 
 import numpy as np
 from scipy.spatial.transform import Rotation
-#TODO：仿真器里面根本没有使用PID控制器而只是采用了step的方式
+
+
 def get_site_tmat(mj_data, site_name):
     tmat = np.eye(4)
     tmat[:3,:3] = mj_data.site(site_name).xmat.reshape((3,3))
@@ -16,6 +17,7 @@ def get_body_tmat(mj_data, body_name):
     tmat[:3,:3] = Rotation.from_quat(mj_data.body(body_name).xquat[[1,2,3,0]]).as_matrix()
     tmat[:3,3] = mj_data.body(body_name).xpos
     return tmat
+
 # 这个函数 step_func 实现了一个简单的平滑移动算法。它的目的是将一个当前值（current）逐步调整到目标值（target），每次调整的幅度不超过给定的步长（step）。让我们逐行分析：
 
 # if current < target - step:
@@ -41,6 +43,7 @@ def get_body_tmat(mj_data, body_name):
 # 实现速度限制，防止关节移动过快。
 # 在接近目标位置时提供精确定位。
 # 总的来说，这个函数提供了一种简单而有效的方法来实现平滑、受控的值调整，这在机器人运动控制、动画、或任何需要平滑过渡的场景中都非常有用。
+
 def step_func(current, target, step):
     if current < target - step:
         return current + step

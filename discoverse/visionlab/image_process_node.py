@@ -56,7 +56,7 @@ class ImageProcessor:
 
             if self.display:
                 # 显示处理后的图像
-                # TODO：根本不显示！！！！！！！！！！！！！！！
+                # TODO：根本不显示！！！！！！！！！！！！！！！(权限问题)
                 print("Displaying.......")
                 # cv2.imshow(f"Processed Camera {camera_id}", processed_frame)
                 # cv2.waitKey(1)  # 允许窗口刷新

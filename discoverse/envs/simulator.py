@@ -337,8 +337,9 @@ class SimulatorBase:
 
             if len(target_body_name) > 0:
                 mask = np.zeros_like(geom_ids, dtype=np.uint8)
-                for body_name in target_body_name:
-                    mask[np.where((self.renderer_seg.model.body(body_name).geomadr <= geom_ids) & (geom_ids < self.renderer_seg.model.body(body_name).geomadr + self.renderer_seg.model.body(body_name).geomnum))] = 255
+                for idx, body_name in enumerate(target_body_name):
+                    mask[np.where((self.renderer_seg.model.body(body_name).geomadr <= geom_ids) & (geom_ids < self.renderer_seg.model.body(body_name).geomadr + self.renderer_seg.model.body(body_name).geomnum))] = (idx + 1) * 255 // len(target_body_name)
+                    # print(f"idx:{idx},body_name:{body_name}")
                 seg_img = mask
             else:
                 geom_ids = geom_ids.astype(np.float64) + 1
