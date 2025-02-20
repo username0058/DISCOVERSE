@@ -71,7 +71,7 @@ class SimNode(AirbotPlayTaskBase):
             return None
         
         # 计算质心（所有符合像素的平均坐标）
-        cx, cy = np.mean(mask_area, axis=1).astype(int)
+        cy, cx = np.mean(mask_area, axis=1).astype(int)
         
         # ------------------ 坐标转换部分 ------------------
         # 获取相机参数
