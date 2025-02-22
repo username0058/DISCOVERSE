@@ -495,7 +495,8 @@ class SimulatorBase:
 
         # 生成分割图像
         self.img_seg_obs_s = {}
-        target_body_list = ["bowl_pink","block_green"]
+        # target_body_list = ["bowl_pink","block_green"]
+        target_body_list = ["bridge1","bridge2","block1_green","block2_green","block_purple1","block_purple2","block_purple3","block_purple4","block_purple5","block_purple6"]
         for id in self.config.obs_seg_cam_id:
             img = self.getSegImg(id, target_body_list)
             self.img_seg_obs_s[id] = img  

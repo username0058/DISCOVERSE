@@ -99,7 +99,8 @@ class HandWithArmBase(SimulatorBase):
             "ep"   : self.sensor_endpoint_posi_local.tolist(),
             "eq"   : self.sensor_endpoint_quat_local.tolist(),
             "fq"   : self.sensor_finger_qpos.tolist(),
-            "img"  : self.img_rgb_obs_s
+            "img"  : self.img_rgb_obs_s,
+            "seg"  : self.img_seg_obs_s
         }
         
         #print(self.obs)

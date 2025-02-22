@@ -24,14 +24,14 @@ class AirbotPlayFIK:
         self.pin_model = pin.buildModelFromUrdf(urdf)
         self.pin_data = self.pin_model.createData()
 
-    def forwardKin(self, q) -> pin.SE3:
+    def forwardKin(self, q):
         pin.forwardKinematics(self.pin_model, self.pin_data, q)
         return self.pin_data.oMi[6]
 
     def properIK(self, pos, ori, ref_q=None):
         return self.inverseKin(pos, ori @ self.arm_rot_mat, ref_q)
 
-    def properFK(self, q) -> pin.SE3:
+    def properFK(self, q):
         eoMi = self.forwardKin(np.array(q))
         tmat = np.eye(4)
         tmat[:3,:3] = eoMi.rotation @ self.arm_rot_mat.T

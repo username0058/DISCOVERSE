@@ -34,6 +34,9 @@ def recoder_hand_with_arm(save_path, act_lst, obs_lst, cfg):
     for id in cfg.obs_rgb_cam_id:
         #保存相机数据
         mediapy.write_video(os.path.join(save_path, f"cam_{id}.mp4"), [o['img'][id] for o in obs_lst], fps=cfg.render_set["fps"])
+    if cfg.use_segmentation_renderer:
+        for id in cfg.obs_seg_cam_id:
+            mediapy.write_video(os.path.join(save_path, f"seg_cam_{id}.mp4"), [o['seg'][id] for o in obs_lst], fps=cfg.render_set["fps"])
     print("mp4 saved")
     
 class HandArmTaskBase(HandWithArmBase):
