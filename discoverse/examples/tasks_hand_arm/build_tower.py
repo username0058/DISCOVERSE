@@ -13,7 +13,7 @@ import multiprocessing as mp
 import json
 import traceback
 import math
-from discoverse.airbot_play import AirbotPlayFIK #机械臂逆运动学解算
+from discoverse.airbot_play import AirbotPlayFIK #机械臂正逆运动学
 from discoverse import DISCOVERSE_ROOT_DIR , DISCOVERSE_ASSERT_DIR #引入仿真器路径和模型路径
 
 from discoverse.utils import get_body_tmat , step_func , SimpleStateMachine #获取旋转矩阵，步进，状态机
@@ -52,6 +52,15 @@ class SimNode(HandArmTaskBase):
             )
             
     def check_success(self):
+        """
+        检查是否完成了指定形态的搭建
+        
+        Parameters:
+        - None
+        
+        Returns:
+        - bool: 是否完成了指定形态的搭建
+        """
         #检查是否成功
         tmat_bridge1 = get_body_tmat(self.mj_data, "bridge2")
         tmat_bridge2 = get_body_tmat(self.mj_data, "bridge1")
@@ -101,8 +110,20 @@ cfg.use_segmentation_renderer = True
 step_ref = np.zeros(3)
 step_flag = True
 
-def check_step_done(fb,ref):
-    epsilon = 0.005
+def check_step_done(fb,ref,epsilon=0.005):
+    
+    """
+    检查是否完成了步进
+    
+    Parameters:
+    - fb:  机械臂末端的[x,y,z]坐标
+    - ref: 目标点的[x,y,z]坐标
+    - epsilon: 容差
+    
+    Returns:
+    - bool: 是否完成了步进
+    """
+
     # 检查fb和ref的形状是否一致
     if fb.shape != ref.shape:
         raise ValueError("fb and ref must have the same shape")
@@ -116,23 +137,24 @@ def check_step_done(fb,ref):
     else:
         return False
 
-def search_above_point_along_z(edge_points, target_point):
+def search_above_point_along_z(edge_points, current_point):
     """
     在点云中沿着给定点所在的Z轴（即x和y坐标相同）自下而上搜索，直到上方5厘米内没有其他点。
+    主要目的是跨越工作空间中一定高度范围内不具备逆运动学可解性的区域
     
     Parameters:
     - edge_points:  点云的坐标数组，形状为 (n, 3)，每一行代表一个点的 (x, y, z) 坐标。
-    - target_point: 目标点的坐标，格式为 [x, y, z]。
-    - threshold: 搜索的距离阈值（0.5厘米），默认为 0.005 米。
+    - current_point: 当前点的坐标，格式为 [x, y, z]。
     
     Returns:
-    - nearest_point: 找到的满足条件的点。
-    - distance: 满足条件的点到目标点的距离。
+    - nearest_point: 找到的满足条件的点[x, y, z]。
     """
+    
+    #threshold: 搜索的距离阈值
     z_threshold = 0.05
     
     # 获取目标点的x, y坐标
-    target_x, target_y, target_z = target_point
+    target_x, target_y, target_z = current_point
     
     # 计算目标点在 x 和 y 坐标平面上的距离
     distances = np.sqrt((edge_points[:, 0] - target_x) ** 2 + (edge_points[:, 1] - target_y) ** 2)
@@ -151,7 +173,7 @@ def search_above_point_along_z(edge_points, target_point):
     ]
     
     # 如果没有找到符合条件的点，返回 None
-    if len(filtered_points) == 0:
+    if len(filtered_points) <= 0:
         print("No such z axis found.")
         return None
     
@@ -168,19 +190,21 @@ def search_above_point_along_z(edge_points, target_point):
             nearest_point = sorted_points[i-1]  # 这个点即为满足条件的点
             print("Found a point along z axis.")
             return nearest_point
-    if len(sorted_points) > 0:  # 如果在这条Z轴上不是中间没有点的类型
-        for i in range(1, len(sorted_points)):
-            if sorted_points[i-1][2] > 0.25:
-                nearest_point = sorted_points[i-1]  
-                print("Found a point along z axis.")
-                return nearest_point
-    # 如果没有找到符合条件的点，返回None
+        
+    # 如果在这条Z轴上不是中间存在间断的类型
+    for i in range(1, len(sorted_points)):
+        if sorted_points[i-1][2] > 0.25:
+            nearest_point = sorted_points[i-1]  
+            print("Found a point on 0.25.")
+            return nearest_point
+        
+    # 如果上面都没找到找到符合条件的点，返回None
     print("No such point found.")
     return None
 
 def save_image_with_cross(image_data, save_path, cx, cy, cross_size=10, color=(255, 0, 0), thickness=2):
     """
-    在图像上绘制十字标记，并保存到指定路径。
+    在图像上指定位置绘制十字标记，并保存到指定路径。
 
     参数:
     - image_data: 输入图像数据（NumPy 数组），可以是灰度或彩色图像。
@@ -211,11 +235,20 @@ def save_image_with_cross(image_data, save_path, cx, cy, cross_size=10, color=(2
     
 def check_move_done(cx, cy) :
     if abs(cx - cfg.render_set["width"]/2) < 10 and abs(cy - cfg.render_set["height"]/2) < 10:
-        return True
+        if stm.state_idx not in low_check_state:  # 下层搜索需要更细致的范围限定
+            print("Ready to lower")
+            return True
+        else:
+            if abs(cx - cfg.render_set["width"]/2) < 10 and abs(cy - cfg.render_set["height"]/2) < 10:
+                print("Ready to move for grasping")
+                return True
+            else:
+                return False
     else:
         return False
 
-check_state = [1]  # 在移到30cm高度以后的执行图像检查的状态
+check_state = [1, 3]  # 用于巡航搜索的状态列表
+low_check_state = [3]  # 用于底层巡航微调搜索的状态列表
 target_block = ["bridge1","bridge2","block1_green","block2_green","block_purple1","block_purple2","block_purple3","block_purple4","block_purple5","block_purple6"] 
 video_save_path = "/home/ltx/mask_discoverse/DISCOVERSE/discoverse/examples/tasks_hand_arm/show_video.mp4"
 def find_nearest_point(target, edge_points, dis_x, dis_y):
@@ -307,8 +340,10 @@ if __name__ == "__main__":
             os.path.join(DISCOVERSE_ASSERT_DIR, "urdf/airbot_play_v3_gripper_fixed.urdf")
         )
 
-    trmat = R.from_euler("xyz", [0.0, np.pi / 2, 0.0], degrees=False).as_matrix()
-    tmat_armbase_2_world = np.linalg.inv(get_body_tmat(sim_node.mj_data, "arm_base"))    
+    trmat = R.from_euler("xyz", [0.0, np.pi / 2, np.pi / 2], degrees=False).as_matrix()
+    
+    tmat_world_2_armbase = get_body_tmat(sim_node.mj_data, "arm_base")
+    tmat_armbase_2_world = np.linalg.inv(tmat_world_2_armbase)    
         
     stm = SimpleStateMachine() #有限状态机
     stm.max_state_cnt = 4 #最多状态数
@@ -326,6 +361,8 @@ if __name__ == "__main__":
             [-1, 0, 0],
             [0, 1, 0]
         ])
+    #全局视野点
+    high_sight_point = [0.46, -0.005, 0.32]
 
     while sim_node.running:
         if sim_node.reset_sig:
@@ -336,65 +373,43 @@ if __name__ == "__main__":
             
         try:
             if stm.trigger():
-                print(stm.state_idx)
-                #print("arm_qpos is:\n",sim_node.mj_data.qpos[:6])
+                print("state_idx:",stm.state_idx) #每一次打印当前状态index
                 if stm.state_idx == 0: #观看全局视角
-                    trmat = R.from_euler(
-                        "xyz", [0.0, np.pi / 2, np.pi / 2], degrees=False
-                    ).as_matrix()
-                    tmat_cube_1 = get_body_tmat(sim_node.mj_data, "bridge1")
-                    tmat_cube_1[:3, 3] = tmat_cube_1[:3, 3] + np.array(
-                        [0.035, -0.01, 0.3]
-                    )
-                    logging.info("tmat_cube_1 is:\n{}".format(tmat_cube_1[:3, 3]))
-                    next_target = tmat_cube_1[:3,3]
-                    next_target = np.append(next_target,1).reshape(4,1)
-                    tmat_tgt_local = tmat_armbase_2_world @ tmat_cube_1
-
                     #逆运动学求解机械臂六自由度控制值    
                     sim_node.target_control[:6] = arm_ik.properIK(
-                        tmat_tgt_local[:3, 3], trmat@transfor, sim_node.mj_data.qpos[:6]
+                        high_sight_point, trmat@transfor, sim_node.mj_data.qpos[:6]
                     )
-                    text_print.append(tmat_tgt_local[:3, 3])
-                    # grab = "block2_green"
-                    grab = "block_purple5"
-                    # tmat_cube_2 = get_body_tmat(sim_node.mj_data, "block_purple4")
-                    # tmat_tgt_local_2 = tmat_armbase_2_world @ tmat_cube_2
-                    # print("Hey!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                    # print(tmat_tgt_local_2[:3,3])
                     
+                    next_target = np.append(high_sight_point,1).reshape(4,1)
+                    next_target = tmat_world_2_armbase @ next_target
+                    
+                    # 下一步state_idx要抓取的物体名称
+                    grab = "block2_green"
+                    
+                    #初始时刻手指的控制量，张开准备抓取
                     sim_node.target_control[6:] = [1, 0.3, 0, 0, 0, 0]
-                elif stm.state_idx == 1: #抬到第一个绿色木块上方30cm
-                    pass
-                                   
-                elif stm.state_idx == 2: #移动到第一个绿色柱子上方抓取位置
                     
+                elif stm.state_idx == 1: #这一步在下面闭环控制实现，在高处将第一个要抓取的木块对准视野中心
+                    pass 
+                                   
+                elif stm.state_idx == 2: #对准后开环移动下降高度
+                    #在当前z轴上自下而上搜索点云，找到合适的下降目标点
                     openloop_down =  search_above_point_along_z(edge_points , step_ref)
+                    print(openloop_down)
                 
-                    #逆运动学求解机械臂六自由度控制值    
+                    #设定目标位置为搜索到的开环目标点    
                     sim_node.target_control[:6] = arm_ik.properIK(
                         openloop_down.flatten(), trmat@transfor, sim_node.mj_data.qpos[:6]
                     )
+                    
+                    next_target = np.append(openloop_down,1).reshape(4,1)
+                    next_target = tmat_world_2_armbase @ next_target
+                    
                     sim_node.target_control[6:] = [1, 0.3, 0, 0, 0, 0]
                     
-                elif stm.state_idx == 3: #移动到第一个绿色柱子上方抓取位置
-                    trmat = R.from_euler(
-                        "xyz", [0.0, np.pi / 2, np.pi / 2], degrees=False
-                    ).as_matrix()
-                    # tmat_block_2 = get_body_tmat(sim_node.mj_data, "block2_green")
-                    # tmat_block_2[:3, 3] = tmat_block_2[:3, 3] + np.array(
-                    #     [0.035, -0.005, 0.08]
-                    # )
-                    next_target = next_target + np.array([0,0.01,-0.22,0]).reshape(4,1)
-                    # tmat_tgt_local = tmat_armbase_2_world @ tmat_block_2
-                    tmat_tgt_local = tmat_armbase_2_world @ next_target
-                    #逆运动学求解机械臂六自由度控制值    
-                    sim_node.target_control[:6] = arm_ik.properIK(
-                        tmat_tgt_local[:3].flatten(), trmat@transfor, sim_node.mj_data.qpos[:6]
-                    )
-                    sim_node.target_control[6:] = [1, 0.3, 0, 0, 0, 0]
-                    
-                        
+                elif stm.state_idx == 3: #这一步在下面闭环控制实现，在低处将第一个要抓取的木块对准视野中心
+                    pass   # 搜索就不需要初始化
+                                      
                 elif stm.state_idx == 4 : #食指拇指抓取木块
                     for i in range(6):
                         sim_node.target_control[i] += 0
@@ -413,7 +428,7 @@ if __name__ == "__main__":
 
                     #逆运动学求解机械臂六自由度控制值    
                     sim_node.target_control[:6] = arm_ik.properIK(
-                        tmat_tgt_local[:3, 3], trmat@transfor, sim_node.mj_data.qpos[:6]
+                        [ 0.46 , -0.005 , 0.32 ], trmat@transfor, sim_node.mj_data.qpos[:6]
                     )
                     sim_node.target_control[6:] = [1.1, 0.37, 0.6, 0, 0, 0] 
 
@@ -1183,7 +1198,7 @@ if __name__ == "__main__":
                 stm.update()
                 
             if  stm.state_idx in check_state:  
-                if check_move_done(cx, cy) and check_step_done(arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten(), step_ref):
+                if check_move_done(cx, cy) and check_step_done(arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten(), step_ref, 0.005):
                     stm.next()
                     done_flag = False
                     step_flag = True
@@ -1191,6 +1206,7 @@ if __name__ == "__main__":
             else:
                 if sim_node.checkActionDone():
                     stm.next()
+                    #当指定动作完成时候返回True，作用类似回调
                     if stm.state_idx in check_state: 
                         done_flag = True
                     else:
@@ -1247,7 +1263,7 @@ if __name__ == "__main__":
                 #         f"captured_frame_{stm.state_idx}.png"
                 #     )
                 #     save_image_with_cross(image_data, image_save_path, cx, cy, 10, (255, 0, 0), 2)
-                print(next_target)
+                # print(next_target)
                 # if stm.state_cnt >= 800:
                 #     # # 写入文件
                 #     # with open('points.json', 'w', encoding='utf-8') as f:
@@ -1263,10 +1279,14 @@ if __name__ == "__main__":
                     dis_x = picture_mid_x - cx
                     
                     length_dis = math.sqrt(dis_x ** 2 + dis_y ** 2) + 1e-6
-                    
-                    next_target[0] += 0.01 * dis_x / length_dis
-                    next_target[1] -= 0.01 * dis_y / length_dis
-                    next_target[2] = 1.2
+                    if stm.state_idx not in low_check_state:
+                        next_target[0] += 0.01 * dis_x / length_dis
+                        next_target[1] -= 0.01 * dis_y / length_dis
+                        next_target[2] = 1.2 
+                    else:
+                        next_target[0] += 0.001 * dis_x / length_dis
+                        next_target[1] -= 0.001 * dis_y / length_dis
+                        next_target[2] = next_target[2]  # 高出巡航1.2，低处巡航搜索可行点
                     # text_print.append(next_target)
                     print("now trying.....")
                     print(next_target)
@@ -1301,7 +1321,7 @@ if __name__ == "__main__":
                 sim_node.joint_move_ratio = dif / (np.max(dif) + 1e-6)
                 
             #检查是否完成这一step
-            step_flag =  check_step_done(arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten(), step_ref)
+            step_flag =  check_step_done(arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten(), step_ref, 0.005)
         
         if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
                 act_lst.append(action.tolist().copy())
