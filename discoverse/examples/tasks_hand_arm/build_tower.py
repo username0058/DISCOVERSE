@@ -29,27 +29,6 @@ class SimNode(HandArmTaskBase):
     #仿真节点
     def __init__(self, config: HandWithArmCfg):
         super().__init__(config)
-        
-    def domain_randomization(self):
-        #积木位置随机化
-        
-        # 随机 2个绿色长方体位置
-        for z in range(2):
-            self.mj_data.qpos[self.nj + 1 + 7 * 2 + z * 7 + 0] += (
-                2.0 * (np.random.random() - 0.5) * 0.001
-            )
-            self.mj_data.qpos[self.nj + 1 + 7 * 2 + z * 7 + 1] += (
-                2.0 * (np.random.random() - 0.5) * 0.001
-            )
-
-        # 随机 6个紫色方块位置
-        for z in range(6):
-            self.mj_data.qpos[self.nj + 1 + 7 * 4 + z * 7 + 0] += (
-                2.0 * (np.random.random() - 0.5) * 0.001
-            )
-            self.mj_data.qpos[self.nj + 1 + 7 * 4 + z * 7 + 1] += (
-                2.0 * (np.random.random() - 0.5) * 0.001
-            )
             
     def check_success(self):
         """
@@ -104,7 +83,7 @@ cfg.headless = False
 cfg.render_set = {"fps": 20, "width": 1920, "height": 1080}
 cfg.obs_rgb_cam_id = [0,1]
 cfg.save_mjb_and_task_config = True
-cfg.obs_seg_cam_id = [0, 1]
+cfg.obs_seg_cam_id = [0,1]
 cfg.use_segmentation_renderer = True
 
 step_ref = np.zeros(3)
@@ -247,8 +226,6 @@ def check_move_done(cx, cy) :
     else:
         return False
 
-check_state = [1, 3]  # 用于巡航搜索的状态列表
-low_check_state = [3]  # 用于底层巡航微调搜索的状态列表
 target_block = ["bridge1","bridge2","block1_green","block2_green","block_purple1","block_purple2","block_purple3","block_purple4","block_purple5","block_purple6"] 
 video_save_path = "/home/ltx/mask_discoverse/DISCOVERSE/discoverse/examples/tasks_hand_arm/show_video.mp4"
 def find_nearest_point(target, edge_points, dis_x, dis_y):
@@ -284,6 +261,10 @@ def find_nearest_point(target, edge_points, dis_x, dis_y):
     print(scores.shape)
     return edge_points[nearest_index], distances[0][nearest_index], scores[0][nearest_index]
 
+check_state = [1, 3, 10, 12]  # 用于巡航搜索的状态列表
+low_check_state = [3, 12]  # 用于底层巡航微调搜索的状态列表
+part = 1 # 代码有点长，这个用于区分不同的部分，便于检索和观察，同时更改part初值可以单独测试抓取某个木块
+last_idx = 0 # 记录每个part最后一个动作的idx，便于插入中间状态
 if __name__ == "__main__":
     done_flag = False
     text_print = []
@@ -346,7 +327,7 @@ if __name__ == "__main__":
     tmat_armbase_2_world = np.linalg.inv(tmat_world_2_armbase)    
         
     stm = SimpleStateMachine() #有限状态机
-    stm.max_state_cnt = 7 #最多状态数
+    stm.max_state_cnt = 100 #最多状态数
     max_time = 120 #最大时间
 
     action = np.zeros(12) #动作空间
@@ -374,84 +355,185 @@ if __name__ == "__main__":
         try:
             if stm.trigger():
                 print("state_idx:",stm.state_idx) #每一次打印当前状态index
-                if stm.state_idx == 0: #观看全局视角
-                    #逆运动学求解机械臂六自由度控制值    
-                    sim_node.target_control[:6] = arm_ik.properIK(
-                        high_sight_point, trmat@transfor, sim_node.mj_data.qpos[:6]
-                    )
-                    
-                    next_target = np.append(high_sight_point,1).reshape(4,1)
-                    next_target = tmat_world_2_armbase @ next_target
-                    
-                    # 下一步state_idx要抓取的物体名称
-                    grab = "block2_green"
-                    
-                    #初始时刻手指的控制量，张开准备抓取
-                    sim_node.target_control[6:] = [1, 0.3, 0, 0, 0, 0]
-                    
-                elif stm.state_idx == 1: #这一步在下面闭环控制实现，在高处将第一个要抓取的木块对准视野中心
-                    pass 
-                                   
-                elif stm.state_idx == 2: #对准后开环移动下降高度
-                    #在当前z轴上自下而上搜索点云，找到合适的下降目标点
-                    openloop_down =  search_above_point_along_z(edge_points , step_ref)
-                    print(openloop_down)
-                
-                    #设定目标位置为搜索到的开环目标点    
-                    sim_node.target_control[:6] = arm_ik.properIK(
-                        openloop_down.flatten(), trmat@transfor, sim_node.mj_data.qpos[:6]
-                    )
-                    
-                    next_target = np.append(openloop_down,1).reshape(4,1)
-                    next_target = tmat_world_2_armbase @ next_target
-                    
-                    sim_node.target_control[6:] = [1, 0.3, 0, 0, 0, 0]
-                    
-                elif stm.state_idx == 3: #这一步在下面闭环控制实现，在低处将第一个要抓取的木块对准视野中心
-                    pass   # 搜索就不需要初始化
-                                      
-                elif stm.state_idx == 4 : #下降高度并接近木块
-                    
-                    now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
-                    now_point[0] -= 0.08
-                    now_point[1] -= 0.05
-                    now_point[2] = 0.15 
-                    
-                    sim_node.target_control[:6] = arm_ik.properIK(
-                        now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
-                    )
-                    
-                    # sim_node.target_control[6:] = [1.1, 0.37, 0.60, 0, 0, 0]
-                    
-                elif stm.state_idx == 5:  # 前进接近并抓取木块
-                    now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
-                    now_point[0] += 0.03
-                    
-                    sim_node.target_control[:6] = arm_ik.properIK(
-                        now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
-                    )
-                    
-                    #手指闭合
-                    sim_node.target_control[6:] = [1.1, 0.37, 0.60, 0, 0, 0]
-                    
-                elif stm.state_idx == 6:  # 抬起木块
-                    now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
-                    now_point[2] += 0.1
-                    
-                    sim_node.target_control[:6] = arm_ik.properIK(
-                        now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
-                    )
-                    
-                
-                
-                # else :/home/ltx/my_brain/ply_read.py
-                #     for i in range (12):
-                #         sim_node.target_control[i] += 0
-                #     sim_node.target_control[6:] = [1.1, 0.37, 0.6, 0, id0, 0]
-                
-                # for i in range(6, 12):
-                #         sim_node.target_control[i] = 0
+                if part == 1 :
+                    if stm.state_idx == last_idx: #观看全局视角
+                        #逆运动学求解机械臂六自由度控制值    
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            high_sight_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
                         
+                        next_target = np.append(high_sight_point,1).reshape(4,1)
+                        next_target = tmat_world_2_armbase @ next_target
+                        
+                        # 下一步state_idx要抓取的物体名称
+                        grab = "block2_green"
+                        
+                        #初始时刻手指的控制量，张开准备抓取
+                        sim_node.target_control[6:] = [1, 0.3, 0, 0, 0, 0]
+                        
+                    elif stm.state_idx == last_idx + 1: #这一步在下面闭环控制实现，在高处将第一个要抓取的木块对准视野中心
+                        pass 
+                                    
+                    elif stm.state_idx == last_idx + 2: #对准后开环移动下降高度
+                        #在当前z轴上自下而上搜索点云，找到合适的下降目标点
+                        openloop_down =  search_above_point_along_z(edge_points , step_ref)
+                        print(openloop_down)
+                    
+                        #设定目标位置为搜索到的开环目标点    
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            openloop_down.flatten(), trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                        next_target = np.append(openloop_down,1).reshape(4,1)
+                        next_target = tmat_world_2_armbase @ next_target
+                        
+                        sim_node.target_control[6:] = [1, 0.3, 0, 0, 0, 0]
+                        
+                    elif stm.state_idx == last_idx + 3: #这一步在下面闭环控制实现，在低处将第一个要抓取的木块对准视野中心
+                        pass   # 搜索就不需要初始化
+                                        
+                    elif stm.state_idx == last_idx + 4 : #下降高度并接近木块
+                        
+                        now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
+                        now_point[0] -= 0.08
+                        now_point[1] -= 0.05
+                        now_point[2] = 0.15 
+                        
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                        # sim_node.target_control[6:] = [1.1, 0.37, 0.60, 0, 0, 0]
+                        
+                    elif stm.state_idx == last_idx + 5:  # 前进接近并抓取木块
+                        now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
+                        now_point[0] += 0.03
+                        now_point[2] -= 0.005
+                        
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                        #手指闭合
+                        sim_node.target_control[6:] = [1.1, 0.37, 0.6, 0, 0, 0]
+                        
+                    elif stm.state_idx == last_idx + 6:  # 抬起木块
+                        now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
+                        now_point[2] += 0.1
+                        
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                    elif stm.state_idx == last_idx + 7:    #平移到bridge旁边
+                        now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
+                        now_point[0] -= 0.01
+                        now_point[1] -= 0.05 
+                        now_point[2] -= 0.095
+                        
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                    elif stm.state_idx == last_idx + 8:    #松开手指
+                        sim_node.target_control[6:] = [1, 0.3, 0, 0, 0, 0]
+                        part += 1
+                        last_idx = stm.state_idx + 1 #在每一个part结束的时候更新这个idx
+                        
+                if part == 2 :
+                    if stm.state_idx == last_idx: #回到高处观看全局视角
+                        #逆运动学求解机械臂六自由度控制值    
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            high_sight_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                        next_target = np.append(high_sight_point,1).reshape(4,1)
+                        next_target = tmat_world_2_armbase @ next_target
+                        
+                        # 下一步state_idx要抓取的物体名称
+                        grab = "block1_green"
+                        
+                    elif stm.state_idx == last_idx + 1: #闭环控制在高处对准中心
+                        pass
+                    
+                    elif stm.state_idx == last_idx + 2: #对准后开环移动下降高度
+                        #在当前z轴上自下而上搜索点云，找到合适的下降目标点
+                        openloop_down =  search_above_point_along_z(edge_points , step_ref)
+                        print(openloop_down)
+                    
+                        #设定目标位置为搜索到的开环目标点    
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            openloop_down.flatten(), trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                        next_target = np.append(openloop_down,1).reshape(4,1)
+                        next_target = tmat_world_2_armbase @ next_target
+                        
+                    elif stm.state_idx == last_idx + 3: #闭环控制在低处对准中心
+                        pass
+                        
+                    elif stm.state_idx == last_idx + 4 : #下降高度并接近木块
+                        
+                        now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
+                        now_point[0] -= 0.08
+                        now_point[1] -= 0.05
+                        now_point[2] = 0.15 
+                        
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                        # sim_node.target_control[6:] = [1.1, 0.37, 0.60, 0, 0, 0]
+                        
+                    elif stm.state_idx == last_idx + 5:  # 前进接近并抓取木块
+                        now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
+                        now_point[0] += 0.03
+                        now_point[2] -= 0.005
+                        
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                        #手指闭合
+                        sim_node.target_control[6:] = [1.1, 0.37, 0.6, 0, 0, 0]
+                        
+                    elif stm.state_idx == last_idx + 6:  # 抬起木块
+                        now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
+                        now_point[2] += 0.1
+                        
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                    elif stm.state_idx == last_idx + 7:    #平移到bridge旁边
+                        now_point = arm_ik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten()
+                        now_point[0] -= 0.01
+                        now_point[1] += 0.05 
+                        now_point[2] -= 0.095
+                        
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            now_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                    elif stm.state_idx == last_idx + 8:    #松开手指
+                        sim_node.target_control[6:] = [1, 0.3, 0, 0, 0, 0]
+                        part += 1
+                        last_idx = stm.state_idx + 1
+                
+                if part == 3:
+                    if stm.state_idx == last_idx: #回到高处观看全局视角
+                        #逆运动学求解机械臂六自由度控制值    
+                        sim_node.target_control[:6] = arm_ik.properIK(
+                            high_sight_point, trmat@transfor, sim_node.mj_data.qpos[:6]
+                        )
+                        
+                        next_target = np.append(high_sight_point,1).reshape(4,1)
+                        next_target = tmat_world_2_armbase @ next_target
+                        
+                        # 下一步state_idx要抓取的物体名称
+                        grab = "block_purple1"
+                            
+                    
                 dif = np.abs(action - sim_node.target_control)
                 sim_node.joint_move_ratio = dif / (np.max(dif) + 1e-6)
 
@@ -492,9 +574,7 @@ if __name__ == "__main__":
         out.write(obs["img"][1])
         
         if done_flag:
-            
             if step_flag :
-
                 obj_idx = target_block.index(grab)
                 target_gray = (obj_idx + 1) * 255 // len(target_block)
                 
@@ -503,39 +583,7 @@ if __name__ == "__main__":
                 
                 # 计算质心（所有符合像素的平均坐标）
                 cy, cx = np.mean(mask_area, axis=1).astype(int)
-                # if stm.state_idx == 1 and id == 1:
-                #     state_x = cx
-                #     state_y = cy
-                #     logging.debug(f"state_x: {state_x}, state_y: {state_y}")
                     
-                #     image_data = obs["seg"][id]
-                    
-                #     image_save_path = os.path.join(
-                #         "/home/ltx/mask_discoverse/DISCOVERSE/discoverse/examples/tasks_hand_arm",
-                #         f"captured_frame_{stm.state_idx}.png"
-                #     )
-                #     save_image_with_cross(image_data, image_save_path, cx, cy, 10, (255, 0, 0), 2)
-
-                    
-                # if stm.state_idx == 2 and id == 1:
-                #     center_x = cx
-                #     center_y = cy
-                #     logging.debug(f"center_x: {center_x}, center_y: {center_y}")
-                    
-                #     image_data = obs["seg"][id]
-                    
-                #     image_save_path = os.path.join(
-                #         "/home/ltx/mask_discoverse/DISCOVERSE/discoverse/examples/tasks_hand_arm",
-                #         f"captured_frame_{stm.state_idx}.png"
-                #     )
-                #     save_image_with_cross(image_data, image_save_path, cx, cy, 10, (255, 0, 0), 2)
-                # print(next_target)
-                # if stm.state_cnt >= 800:
-                #     # # 写入文件
-                #     # with open('points.json', 'w', encoding='utf-8') as f:
-                #     #     json.dump(text_print, f, indent=4, ensure_ascii=False)  # ensure_ascii=False避免中文乱码
-                #     print("run 800 epoch")
-                #     exit(0)
                 try:        
                     picture_mid_x = cfg.render_set["width"] // 2
                     picture_mid_y = cfg.render_set["height"] // 2 
@@ -556,9 +604,6 @@ if __name__ == "__main__":
                     # text_print.append(next_target)
                     print("now trying.....")
                     print(next_target)
-                    # logging.debug(f"next_target: {next_target}")
-                    # logging.debug(f"cx: {cx}, cy: {cy}")
-                    # logging.debug(f"1920 1080")
                     
                     tmat_tgt_local = tmat_armbase_2_world @ next_target
 
