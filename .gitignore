@@ -15,3 +15,5 @@ submodules*
 *tmp*
 *_pb2*.py
 .vscode
+mask_images/
+discoverse/examples/tasks_hand_arm/nohup.out
