@@ -7,8 +7,8 @@
 
 
 
-  <joint type="free" frictionloss="0.00002" />
-  <inertial pos="0.030 0.015 0.015" mass="0.01" diaginertia="0.00001 0.00001 0.00001" />
+  <joint type="free" frictionloss="0.00001" />
+  <inertial pos="0 0 0" mass="0.0001" diaginertia="0.00002 0.00002 0.00002" />
   <!-- <geom material="box_texture" mesh="box" class="obj_visual"/> -->
   <geom rgba="0.15 0.65 0.63 1" type="mesh" mesh="bridge" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="5 0.05 0.01"/>
 
