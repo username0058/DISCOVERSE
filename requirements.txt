@@ -3,3 +3,4 @@ scipy
 mediapy
 opencv-python
 mujoco
+pin
