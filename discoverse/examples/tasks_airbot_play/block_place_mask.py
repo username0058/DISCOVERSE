@@ -105,7 +105,7 @@ cfg.obs_seg_cam_id = [0,1]
 cfg.use_segmentation_renderer = True
 
 step_ref = np.zeros(3)
-step_flag = True
+step_flag = False
 grab = None
 
 def check_step_done(fb,ref,epsilon=0.005):
@@ -167,7 +167,7 @@ def save_image_with_cross(image_data, save_path, cx, cy, cross_size=10, color=(2
     print("image saved to", save_path)
 
 def check_move_done(cx, cy) :
-    if abs(cx - cfg.render_set["width"]/2) < 10 and abs(cy - cfg.render_set["height"]/2) < 10:
+    if abs(cx - cfg.render_set["width"]/2) < 5 and abs(cy - cfg.render_set["height"]/2) < 5:
         return True
     else:
         return False
@@ -260,7 +260,7 @@ if __name__ == "__main__":
     tmat_armbase_2_world = np.linalg.inv(tmat_world_2_armbase) 
 
     stm = SimpleStateMachine()
-    stm.max_state_cnt = 79
+    stm.max_state_cnt = 100
     max_time = 70.0  # seconds
 
     action = np.zeros(7)
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     move_speed = 0.75
     sim_node.reset()
     
-    high_sight_point = [0.25, 0, 0.17] # 全局视野点
+    high_sight_point = [0.3, 0, 0.15] # 全局视野点
     
     trmat_left = Rotation.from_euler(
                         "xyz", [0.0, np.pi / 2, np.pi / 2], degrees=False
@@ -287,26 +287,26 @@ if __name__ == "__main__":
             act_lst, obs_lst = [], []
 
         try:
-            if stm.trigger():
+            if stm.trigger(): # 状态机更新时
+                step_flag = False # 每次状态机更新重置步进标志
                 print("state_idx:",stm.state_idx) #每一次打印当前状态index
                 if op_part == 1 :
                     if stm.state_idx == last_idx:
                         #逆运动学求解机械臂六自由度控制值    
                         sim_node.target_control[:6] = arm_fik.properIK(
-                            high_sight_point, trmat_left, sim_node.mj_data.qpos[:6]
+                            high_sight_point, trmat_forward, sim_node.mj_data.qpos[:6]
                         )
                         
                         next_target = np.append(high_sight_point,1).reshape(4,1)
                         next_target = tmat_world_2_armbase @ next_target
                         
-                        # 下一步state_idx要抓取的物体名称
-                        grab = "block1_green"
                         sim_node.target_control[6] = 1
-                        check_state.append(stm.state_idx+1)
-                    elif stm.state_idx == last_idx + 1 :
-                        print("check_state:",check_state)
                         
-                
+                    elif stm.state_idx == last_idx + 1 :
+                        check_state.append(stm.state_idx) # 将需要步进的状态号加入列表
+                        grab = "block2_green" # 要步进抓取的目标
+                        step_flag = True # 使用步进操作
+                        print("check_state:",check_state) # 打印当前步进状态列表    
 
                 dif = np.abs(action - sim_node.target_control)
                 sim_node.joint_move_ratio = dif / (np.max(dif) + 1e-6)
@@ -316,23 +316,6 @@ if __name__ == "__main__":
 
             else:
                 stm.update()
-
-            if  stm.state_idx in check_state:  
-                if check_move_done(global_cx, global_cy) and check_step_done(arm_fik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten(), step_ref, 0.005):
-                    stm.next()
-                    done_flag = False
-                    step_flag = True
-                    
-            else:
-                if sim_node.checkActionDone():
-                    stm.next()
-                    #当指定动作完成时候返回True，作用类似回调
-                    if stm.state_idx in check_state: 
-                        done_flag = True
-                    else:
-                        done_flag = False
-            # print(stm.state_idx,"done_flag",done_flag,"step_flag",step_flag)
-
 
         except ValueError as ve:
             traceback.print_exc()
@@ -349,67 +332,87 @@ if __name__ == "__main__":
         obs, _, _, _, _ = sim_node.step(action)
         
         out.write(obs["img"][1])
-
-        if done_flag:
-            if step_flag :
-                print("trying")
-                obj_idx = target_block.index(grab)
-                target_gray = (obj_idx + 1) * 255 // len(target_block)
-                
-                # 容差处理（±3灰度级）
-                # mask_area = np.where(np.abs(obs["seg"][1] - target_gray) <= 3)
-                # 检查对应的seg输出情况
-                mask = np.zeros_like(obs["seg"][1])
-                mask_seg = np.zeros_like(obs["seg"][1])
-                mask[np.where(np.abs(obs["seg"][1] - target_gray) <= 3)] = 255  # 容差处理
-                # 形态学操作
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))  
-                eroded = cv2.erode(mask, kernel, iterations=1)      
-                dilated = cv2.dilate(eroded, kernel, iterations=1)  
-                # 获取处理后的有效区域坐标
-                processed_mask_area = np.where(dilated == 255)
-                mask_seg[processed_mask_area] = 255
-                cy, cx = np.mean(processed_mask_area, axis=1).astype(int)
-                         
-                global_cx = cx
-                global_cy = cy         
-
-                picture_mid_x = cfg.render_set["width"] // 2
-                picture_mid_y = cfg.render_set["height"] // 2 
-                
+        # out_test.write(obs["seg"][1])
+        
+        # 如果step_flag为真，则步进搜索，否则正常执行
+        
+        
+        #判断步进或正常动作是否完成
+        if  stm.state_idx in check_state:  
+            if check_move_done(global_cx, global_cy) and check_step_done(arm_fik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten(), step_ref, 0.005):
+                done_flag = True
+        else:
+            if sim_node.checkActionDone():
+                #当指定动作完成时候返回True，作用类似回调
+                done_flag = True
+            
                     
-                dis_y = picture_mid_y - cy
-                dis_x = picture_mid_x - cx
-                
-                print(dis_y , dis_x)
-                
-                length_dis = math.sqrt(dis_x ** 2 + dis_y ** 2) + 1e-6
-                
-                next_target[0] += 0.001 * dis_x / length_dis
-                next_target[1] -= 0.001 * dis_y / length_dis
-                next_target[2] = next_target[2]  # 高处巡航1.2，低处巡航搜索可行点
-                
-                # text_print.append(next_target)
-                print("now trying.....")
-                print(next_target)
-                
-                tmat_tgt_local = tmat_armbase_2_world @ next_target
-
-                #逆运动学求解机械臂六自由度控制值    
-                sim_node.target_control[:6] = arm_fik.properIK(
-                    tmat_tgt_local[:3].flatten(), trmat, sim_node.mj_data.qpos[:6]
-                )
-                text_print.append(next_target)
-                step_ref = tmat_tgt_local[:3].flatten()
-                
+        print(stm.state_idx,"done_flag",done_flag,"step_flag",step_flag)
+        
+        # 如果在步进状态，连续操作
+        if step_flag :
+            print("trying")
+            obj_idx = target_block.index(grab)
+            target_gray = (obj_idx + 1) * 255 // len(target_block)
+            
+            # 容差处理（±3灰度级）
+            # mask_area = np.where(np.abs(obs["seg"][1] - target_gray) <= 3)
+            # 检查对应的seg输出情况
+            mask = np.zeros_like(obs["seg"][1])
+            mask_seg = np.zeros_like(obs["seg"][1])
+            mask[np.where(np.abs(obs["seg"][1] - target_gray) <= 3)] = 255  # 容差处理
+            # 形态学操作
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))  
+            eroded = cv2.erode(mask, kernel, iterations=1)      
+            dilated = cv2.dilate(eroded, kernel, iterations=1)  
+            # 获取处理后的有效区域坐标
+            processed_mask_area = np.where(dilated == 255)
+            mask_seg[processed_mask_area] = 255
+            cy, cx = np.mean(processed_mask_area, axis=1).astype(int)
                     
-                dif = np.abs(action - sim_node.target_control)
-                sim_node.joint_move_ratio = dif / (np.max(dif) + 1e-6)
+            global_cx = cx
+            global_cy = cy         
+
+            picture_mid_x = cfg.render_set["width"] // 2
+            picture_mid_y = cfg.render_set["height"] // 2 
+            
+                
+            dis_y = picture_mid_y - cy
+            dis_x = picture_mid_x - cx
+            
+            print(dis_y , dis_x)
+            
+            length_dis = math.sqrt(dis_x ** 2 + dis_y ** 2) + 1e-6
+            
+            next_target[0] += 0.001 * dis_x / length_dis
+            next_target[1] -= 0.001 * dis_y / length_dis
+            next_target[2] = next_target[2]  # 高处巡航1.2，低处巡航搜索可行点
+            
+            # text_print.append(next_target)
+            print("now trying.....")
+            print(next_target)
+            
+            tmat_tgt_local = tmat_armbase_2_world @ next_target
+
+            #逆运动学求解机械臂六自由度控制值    
+            sim_node.target_control[:6] = arm_fik.properIK(
+                tmat_tgt_local[:3].flatten(), trmat, sim_node.mj_data.qpos[:6]
+            )
+            text_print.append(next_target)
+            step_ref = tmat_tgt_local[:3].flatten()
+            
+                
+            dif = np.abs(action - sim_node.target_control)
+            sim_node.joint_move_ratio = dif / (np.max(dif) + 1e-6)
             #检查是否完成这一step
-            # step_flag =  check_step_done(arm_fik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten(), step_ref, 0.005)
-            step_flag =  check_step_done(arm_fik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten(), step_ref, 0.005)
-
-                
+            #step_flag =  check_step_done(arm_fik.properFK(sim_node.mj_data.qpos[:6])[:3,3].flatten(), step_ref, 0.005)
+            
+        
+        if done_flag :
+            stm.next() # 如果一个状态完成，更新状态机
+            done_flag = False # 重置完成标志
+        
+        
         if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
                 act_lst.append(action.tolist().copy())
                 obs_lst.append(obs)
