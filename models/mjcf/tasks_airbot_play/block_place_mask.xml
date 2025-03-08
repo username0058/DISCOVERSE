@@ -33,12 +33,12 @@
     <camera name="eye_side" fovy="72.02" pos="-0.324 -0.4 1.5" xyaxes=" 0.828 -0.561 0.    0.394 0.582 0.702"/>
 
     <!-- ======= bridge1 ======= -->
-    <body name="bridge1" pos="-0.03 0.42 0.8" euler="1.5707963 0 0">
+    <body name="bridge1" pos="-0.03 0.37 0.8" euler="1.5707963 0 0">
       <include file="../object/bridge.xml"/>
     </body>
 
     <!-- ======= bridge2 ======= -->
-    <body name="bridge2" pos="-0.03 0.39 0.86" euler="-1.5707963 0 0">
+    <body name="bridge2" pos="-0.03 0.34 0.86" euler="-1.5707963 0 0">
         <joint type="free" frictionloss="0.00001" />
         <inertial pos="0 0 0" mass="0.0005" diaginertia="0.00002 0.00002 0.00002" />
         <geom rgba="0.15 0.65 0.63 1" type="mesh" mesh="bridge" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="5 0.05 0.001"/>
@@ -46,14 +46,14 @@
 
 
     <!-- ======= block1 ======= -->
-    <body name="block1_green" pos="0.09 0.405 0.835" euler="1.5707963 0 0">
+    <body name="block1_green" pos="0.09 0.355 0.835" euler="1.5707963 0 0">
       <joint type="free" frictionloss="0.0001" />
       <inertial pos="0 0 0" mass="0.001" diaginertia="0.00002 0.00002 0.00002" />
       <geom rgba="0.3 0.6 0.075 1" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="5 0.05 0.001" pos="0 0 0" size="0.015 0.03 0.015" type="box"/>
     </body>
 
     <!-- ======= block2 ======= -->
-    <body name="block2_green" pos="-0.09 0.405 0.83" euler="1.5707963 0 0">
+    <body name="block2_green" pos="-0.09 0.355 0.83" euler="1.5707963 0 0">
       <joint type="free" frictionloss="0.0001" />
       <inertial pos="0 0 0" mass="0.001" diaginertia="0.00002 0.00002 0.00002" />
       <geom rgba="0.3 0.6 0.075 1" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="5 0.05 0.001" pos="0 0 0" size="0.015 0.03 0.015" type="box"/>
@@ -61,14 +61,14 @@
 
 
     <!-- ======= block_purple1 ======= -->
-    <body name="block_purple1" pos="-0.08 0.345 0.815">
+    <body name="block_purple1" pos="-0.08 0.295 0.815">
       <joint type="free" frictionloss="0.0001" />
       <inertial pos="0 0 0" mass="0.001" diaginertia="0.00002 0.00002 0.00002" />
       <geom rgba="0.65 0.27 0.64 1" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="5 0.05 0.001" pos="0 0 0" size="0.0125 0.0125 0.0125" type="box"/>
     </body>
     
     <!-- ======= block_purple2 ======= -->
-    <body name="block_purple2" pos="0 0.345 0.815">
+    <body name="block_purple2" pos="0 0.295 0.815">
       <joint type="free" frictionloss="0.0001" />
       <inertial pos="0 0 0" mass="0.001" diaginertia="0.00002 0.00002 0.00002" />
       <geom rgba="0.65 0.27 0.64 1" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="5 0.05 0.001" pos="0 0 0" size="0.0125 0.0125 0.0125" type="box"/>

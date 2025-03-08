@@ -23,7 +23,7 @@ class SimNode(AirbotPlayTaskBase):
     def __init__(self, config: AirbotPlayCfg):
         super().__init__(config)
         
-    def domain_randomization(self):
+    def domain_randomization(self): #域随机化在reset的时候被自动调用
         
         # 随机 bridge位置
         bridge_radx = np.random.random()
@@ -31,7 +31,7 @@ class SimNode(AirbotPlayTaskBase):
         # 确保随机化之后bridge依然相互叠着
         for z in range(2):
             self.mj_data.qpos[self.nj + 1 + 7 * 0 + z * 7 + 0] += (
-                2.0 * (bridge_radx - 0.5) * 0.05
+                2.0 * (bridge_radx - 0.5) * 0.01
             )
             self.mj_data.qpos[self.nj + 1 + 7 * 0 + z * 7 + 1] += (
                 2.0 * (bridge_rady - 0.7) * 0.05
@@ -40,10 +40,10 @@ class SimNode(AirbotPlayTaskBase):
         # 随机 绿色长方体位置
         for z in range(2):
             self.mj_data.qpos[self.nj + 1 + 7 * 2 + z * 7 + 0] += (
-                2.0 * (np.random.random() - 0.5) * 0.05
+                2.0 * (np.random.random() - 0.5) * 0.01
             )
             self.mj_data.qpos[self.nj + 1 + 7 * 2 + z * 7 + 1] += (
-                2.0 * (np.random.random() - 0.5) * 0.05
+                2.0 * (np.random.random() - 0.7) * 0.05
             )
 
         # 随机 紫色方块位置
@@ -52,7 +52,7 @@ class SimNode(AirbotPlayTaskBase):
                 2.0 * (np.random.random() - 0.5) * 0.01
             )
             self.mj_data.qpos[self.nj + 1 + 7 * 4 + z * 7 + 1] += (
-                2.0 * (np.random.random() - 0.8) * 0.01
+                2.0 * (np.random.random() - 1.0) * 0.01
             )
             
         print("random done")
@@ -167,7 +167,7 @@ def save_image_with_cross(image_data, save_path, cx, cy, cross_size=10, color=(2
     print("image saved to", save_path)
 
 def check_move_done(cx, cy) :
-    if abs(cx - cfg.render_set["width"]/2) < 5 and abs(cy - cfg.render_set["height"]/2) < 5:
+    if abs(cx - cfg.render_set["width"]/2) < 10 and abs(cy - cfg.render_set["height"]/2) < 10:
         return True
     else:
         return False
